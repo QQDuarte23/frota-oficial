@@ -16,7 +16,7 @@ st.markdown("""
     h1, h2, h3 { color: #002060; }
     .stButton>button { background-color: #002060; color: white; border: none; }
     .stButton>button:hover { background-color: #001540; color: white; }
-    div.stImage > img { display: block; margin-left: auto; margin-right: auto; } /* Centrar imagens */
+    div.stImage > img { display: block; margin-left: auto; margin-right: auto; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -58,14 +58,14 @@ def guardar_registo(dados):
         except: return False
     return False
 
-# --- FUNÇÃO LOGO GRANDE ---
-def mostrar_logo(tamanho=550):
-    # Procura a imagem em todo o lado
+# --- FUNÇÃO LOGO (ELÁSTICO) ---
+def mostrar_logo():
+    # use_container_width=True faz a imagem ocupar toda a largura da coluna
     try:
-        st.image("logo.png", width=tamanho)
+        st.image("logo.png", use_container_width=True)
     except:
         try:
-            st.image(".streamlit/logo.png", width=tamanho)
+            st.image(".streamlit/logo.png", use_container_width=True)
         except:
             st.header("QERQUEIJO 🧀")
 
@@ -73,11 +73,11 @@ def mostrar_logo(tamanho=550):
 if 'logado' not in st.session_state: st.session_state['logado'] = False
 
 if not st.session_state['logado']:
-    # Colunas ajustadas para dar mais espaço ao centro [1, 4, 1]
-    col1, col2, col3 = st.columns([1, 4, 1])
+    # ALTERAÇÃO AQUI: Colunas [2, 2, 2] para centrar mais o conteúdo
+    col1, col2, col3 = st.columns([2, 2, 2])
     with col2:
         st.write(""); st.write("")
-        mostrar_logo(tamanho=600) # Aumentei aqui para ficar bem grande
+        mostrar_logo() # O logo agora ajusta-se à largura desta coluna central
         st.info("Gestão de Frota Cloud")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar", type="primary", use_container_width=True):
@@ -85,7 +85,7 @@ if not st.session_state['logado']:
             else: st.error("Senha errada!")
 else:
     with st.sidebar:
-        mostrar_logo(tamanho=250) # Na barra lateral fica mais pequeno
+        mostrar_logo()
         st.write("---")
         if st.button("Sair"): st.session_state['logado'] = False; st.rerun()
 
