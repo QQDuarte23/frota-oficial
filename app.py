@@ -58,9 +58,8 @@ def guardar_registo(dados):
         except: return False
     return False
 
-# --- FUNÇÃO LOGO (ELÁSTICO) ---
+# --- FUNÇÃO LOGO ---
 def mostrar_logo():
-    # use_container_width=True faz a imagem ocupar toda a largura da coluna
     try:
         st.image("logo.png", use_container_width=True)
     except:
@@ -73,11 +72,10 @@ def mostrar_logo():
 if 'logado' not in st.session_state: st.session_state['logado'] = False
 
 if not st.session_state['logado']:
-    # ALTERAÇÃO AQUI: Colunas [2, 2, 2] para centrar mais o conteúdo
     col1, col2, col3 = st.columns([2, 2, 2])
     with col2:
         st.write(""); st.write("")
-        mostrar_logo() # O logo agora ajusta-se à largura desta coluna central
+        mostrar_logo()
         st.info("Gestão de Frota Cloud")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar", type="primary", use_container_width=True):
@@ -116,12 +114,29 @@ else:
                 else:
                     st.warning("Preenche Valor e Nº Fatura")
 
+    # ABA 2: RESUMO (AGORA COM GRÁFICOS)
     with tab2:
         df = carregar_dados()
         if not df.empty:
             if 'Valor' in df.columns:
                 df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
+            
+            # Métricas
+            total = df['Valor'].sum()
             c1, c2 = st.columns(2)
-            c1.metric("Total", f"{df['Valor'].sum():.2f} €")
-            c2.metric("Faturas", len(df))
+            c1.metric("Total Gasto", f"{total:.2f} €")
+            c2.metric("Nº Faturas", len(df))
+            
+            st.divider()
+            
+            # GRÁFICO DE BARRAS (POR VIATURA)
+            st.subheader("💰 Gastos por Viatura")
+            # Agrupar por matrícula e somar o valor
+            grafico_dados = df.groupby("Matricula")["Valor"].sum()
+            st.bar_chart(grafico_dados, color="#002060")
+            
+            st.divider()
+            
+            # TABELA COMPLETA
+            st.subheader("📋 Detalhe das Faturas")
             st.dataframe(df, use_container_width=True)
