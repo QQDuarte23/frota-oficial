@@ -8,7 +8,7 @@ from datetime import datetime
 # --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# CSS PARA FORÇAR CORES E VISUAL
+# CSS
 st.markdown("""
     <style>
     .stApp { background-color: white; }
@@ -22,7 +22,7 @@ st.markdown("""
 
 NOME_FOLHA_GOOGLE = "dados_frota"
 
-# --- LIGAÇÃO GOOGLE SHEETS ---
+# --- LIGAÇÃO GOOGLE SHEETS (COM DETETIVE DE ERROS 🕵️‍♂️) ---
 def conectar_gsheets():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     try:
@@ -33,11 +33,15 @@ def conectar_gsheets():
             else:
                 creds_json = creds_dict
         else:
+            st.error("❌ Erro: Não encontrei a chave 'service_account' nos Segredos!")
             return None
+        
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
         return client.open(NOME_FOLHA_GOOGLE).sheet1
-    except: return None
+    except Exception as e:
+        st.error(f"❌ Erro de Ligação: {e}")
+        return None
 
 def carregar_dados():
     sheet = conectar_gsheets()
@@ -46,7 +50,9 @@ def carregar_dados():
             df = pd.DataFrame(sheet.get_all_records())
             if df.empty: return pd.DataFrame(columns=["Data_Registo", "Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
             return df
-        except: return pd.DataFrame()
+        except Exception as e:
+            st.error(f"Erro a ler dados: {e}")
+            return pd.DataFrame()
     return pd.DataFrame()
 
 def guardar_registo(dados):
@@ -55,7 +61,9 @@ def guardar_registo(dados):
         try:
             sheet.append_row(dados)
             return True
-        except: return False
+        except Exception as e:
+            st.error(f"❌ O Google recusou a gravação: {e}")
+            return False
     return False
 
 # --- FUNÇÃO LOGO ---
@@ -110,33 +118,21 @@ else:
                 if val > 0 and nf:
                     sucesso = guardar_registo([str(datetime.now()), str(dt), mat, cat, val, km, nf, desc])
                     if sucesso: st.success("✅ Guardado!"); st.balloons()
-                    else: st.error("Erro ao gravar.")
+                    # Se falhar, o erro já aparece na função guardar_registo
                 else:
                     st.warning("Preenche Valor e Nº Fatura")
 
-    # ABA 2: RESUMO (AGORA COM GRÁFICOS)
     with tab2:
         df = carregar_dados()
         if not df.empty:
             if 'Valor' in df.columns:
                 df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
-            
-            # Métricas
-            total = df['Valor'].sum()
             c1, c2 = st.columns(2)
-            c1.metric("Total Gasto", f"{total:.2f} €")
+            c1.metric("Total Gasto", f"{df['Valor'].sum():.2f} €")
             c2.metric("Nº Faturas", len(df))
-            
             st.divider()
-            
-            # GRÁFICO DE BARRAS (POR VIATURA)
             st.subheader("💰 Gastos por Viatura")
-            # Agrupar por matrícula e somar o valor
-            grafico_dados = df.groupby("Matricula")["Valor"].sum()
-            st.bar_chart(grafico_dados, color="#002060")
-            
+            st.bar_chart(df.groupby("Matricula")["Valor"].sum(), color="#002060")
             st.divider()
-            
-            # TABELA COMPLETA
             st.subheader("📋 Detalhe das Faturas")
             st.dataframe(df, use_container_width=True)
