@@ -28,7 +28,6 @@ def conectar_gsheets():
     try:
         if "service_account" in st.secrets:
             creds_dict = st.secrets["service_account"]
-            # Filtro para limpar chaves "sujas"
             if "gcp_json" in creds_dict:
                 try:
                     creds_json = json.loads(creds_dict["gcp_json"], strict=False)
@@ -68,11 +67,11 @@ def guardar_registo(dados):
             return False
     return False
 
-# --- FUNÇÃO ELIMINAR ---
 def eliminar_registo(indice):
     sheet = conectar_gsheets()
     if sheet:
         try:
+            # +2 porque: linha 1 é cabeçalho + gspread começa no 1
             sheet.delete_rows(indice + 2)
             return True
         except Exception as e:
@@ -116,7 +115,6 @@ else:
 
     st.title("🚛 Gestão de Frota")
     
-    # MUDANÇA 1: Nome da aba simplificado
     tab1, tab2 = st.tabs(["➕ Adicionar", "📊 Resumo"])
     
     # ABA 1: ADICIONAR
@@ -139,7 +137,6 @@ else:
                 if val > 0 and nf:
                     sucesso = guardar_registo([str(datetime.now()), str(dt), mat, cat, val, km, nf, desc])
                     if sucesso: 
-                        # MUDANÇA 2: Apenas mensagem de texto, sem balões
                         st.success("✅ Fatura registada com sucesso!")
                 else:
                     st.warning("Preenche Valor e Nº Fatura")
@@ -151,34 +148,66 @@ else:
             if 'Valor' in df.columns:
                 df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
             
-            # Métricas
+            # --- MÉTRICAS ---
             c1, c2 = st.columns(2)
             c1.metric("Total Gasto", f"{df['Valor'].sum():.2f} €")
             c2.metric("Nº Faturas", len(df))
             
             st.divider()
             
-            # MUDANÇA 3: Texto mais profissional
+            # --- ÁREA DE ELIMINAR (COM FILTROS) ---
             with st.expander("🗑️ Eliminar Fatura"):
-                st.warning("Selecione a fatura para remover permanentemente:")
+                # 1. Filtros de Pesquisa
+                col_filtro1, col_filtro2 = st.columns(2)
                 
-                opcoes = []
-                for i, row in df.iterrows():
-                    opcoes.append(f"Linha {i} | {row.get('Data_Fatura','?')} | {row.get('Matricula','?')} | {row.get('Valor','0')}€ | Doc: {row.get('Num_Fatura','?')}")
+                # Criar lista única de matrículas para o filtro
+                lista_matriculas = ["Todas"] + list(df["Matricula"].unique())
+                filtro_mat = col_filtro1.selectbox("Filtrar por Viatura:", lista_matriculas)
                 
-                escolha = st.selectbox("Fatura a apagar:", options=opcoes[::-1])
+                filtro_doc = col_filtro2.text_input("Pesquisar Nº Fatura:")
+
+                # 2. Aplicar Filtros ao DataFrame
+                # Criamos uma cópia para não estragar os dados originais
+                df_filtrado = df.copy()
                 
-                if st.button("❌ Confirmar Eliminação"):
-                    try:
-                        index_to_delete = int(escolha.split(" |")[0].replace("Linha ", ""))
-                        if eliminar_registo(index_to_delete):
-                            st.success("Registo eliminado.")
-                            st.rerun()
-                    except:
-                        st.error("Erro ao selecionar.")
+                # Guardamos o índice original (o número da linha real) antes de filtrar
+                df_filtrado['Index_Original'] = df_filtrado.index
+
+                if filtro_mat != "Todas":
+                    df_filtrado = df_filtrado[df_filtrado["Matricula"] == filtro_mat]
+                
+                if filtro_doc:
+                    # Converte para texto para garantir que encontra mesmo que seja número
+                    df_filtrado = df_filtrado[df_filtrado["Num_Fatura"].astype(str).str.contains(filtro_doc, case=False)]
+
+                # 3. Criar Lista para o Selectbox baseada no FILTRO
+                if not df_filtrado.empty:
+                    opcoes = []
+                    # Iterar sobre o dataframe FILTRADO
+                    for index, row in df_filtrado.iterrows():
+                        # O segredo é usar o row['Index_Original'] para saber qual apagar
+                        idx_real = row['Index_Original']
+                        texto = f"Linha {idx_real} | {row.get('Data_Fatura','?')} | {row.get('Matricula','?')} | {row.get('Valor','0')}€ | Doc: {row.get('Num_Fatura','?')}"
+                        opcoes.append(texto)
+                    
+                    # Mostrar dropdown com as opções filtradas (Invertido para ver recentes primeiro)
+                    escolha = st.selectbox("Selecione a fatura:", options=opcoes[::-1])
+                    
+                    if st.button("❌ Confirmar Eliminação"):
+                        try:
+                            # Extrair o número da linha original
+                            index_to_delete = int(escolha.split(" |")[0].replace("Linha ", ""))
+                            if eliminar_registo(index_to_delete):
+                                st.success("Registo eliminado.")
+                                st.rerun()
+                        except:
+                            st.error("Erro ao processar eliminação.")
+                else:
+                    st.info("Nenhuma fatura encontrada com esses filtros.")
 
             st.divider()
             
+            # --- GRÁFICOS ---
             st.subheader("💰 Gastos por Viatura")
             st.bar_chart(df.groupby("Matricula")["Valor"].sum(), color="#002060")
             
