@@ -5,8 +5,20 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 from datetime import datetime
 
-# --- CONFIGURAÇÃO ---
+# --- CONFIGURAÇÃO VISUAL DIRETA (Sem depender do config.toml) ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
+
+# Forçar cores via código (CSS) para garantir que fica azul
+st.markdown("""
+    <style>
+    .stApp { background-color: white; }
+    header { visibility: hidden; }
+    [data-testid="stSidebar"] { background-color: #F0F2F6; }
+    h1, h2, h3 { color: #002060; }
+    .stButton>button { background-color: #002060; color: white; }
+    </style>
+    """, unsafe_allow_html=True)
+
 NOME_FOLHA_GOOGLE = "dados_frota"
 
 # --- LIGAÇÃO GOOGLE SHEETS ---
@@ -21,7 +33,6 @@ def conectar_gsheets():
                 creds_json = creds_dict
         else:
             return None
-
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
         return client.open(NOME_FOLHA_GOOGLE).sheet1
@@ -46,15 +57,16 @@ def guardar_registo(dados):
         except: return False
     return False
 
-# --- FUNÇÃO LOGO ---
-def mostrar_logo():
-    try:
-        st.image("logo.png", width=250)
-    except:
-        st.header("QERQUEIJO 🧀")
-
 # --- INTERFACE ---
 if 'logado' not in st.session_state: st.session_state['logado'] = False
+
+def mostrar_logo():
+    # Tenta mostrar a imagem. Se falhar, avisa QUAL É o erro.
+    try:
+        st.image("logo.png", width=250)
+    except Exception as e:
+        st.error(f"⚠️ Não encontrei a imagem 'logo.png'. Erro: {e}")
+        st.header("QERQUEIJO 🧀")
 
 if not st.session_state['logado']:
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -67,7 +79,6 @@ if not st.session_state['logado']:
             if senha == "queijo123": st.session_state['logado'] = True
             else: st.error("Senha errada!")
 else:
-    # BARRA LATERAL
     with st.sidebar:
         mostrar_logo()
         st.write("---")
@@ -96,7 +107,7 @@ else:
                 if val > 0 and nf:
                     sucesso = guardar_registo([str(datetime.now()), str(dt), mat, cat, val, km, nf, desc])
                     if sucesso: st.success("✅ Guardado!"); st.balloons()
-                    else: st.error("Erro ao gravar. Verifica a ligação.")
+                    else: st.error("Erro ao gravar.")
                 else:
                     st.warning("Preenche Valor e Nº Fatura")
 
