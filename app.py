@@ -4,11 +4,11 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 from datetime import datetime
+import plotly.express as px
 
 # --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# CSS (Visual Profissional)
 st.markdown("""
     <style>
     .stApp { background-color: white; }
@@ -36,15 +36,11 @@ def conectar_gsheets():
             else:
                 creds_json = creds_dict
         else:
-            st.error("❌ Erro: Falta a chave nos Segredos!")
             return None
-        
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
         return client.open(NOME_FOLHA_GOOGLE).sheet1
-    except Exception as e:
-        st.error(f"❌ Erro de Ligação: {e}")
-        return None
+    except: return None
 
 def carregar_dados():
     sheet = conectar_gsheets()
@@ -62,24 +58,18 @@ def guardar_registo(dados):
         try:
             sheet.append_row(dados)
             return True
-        except Exception as e:
-            st.error(f"❌ Erro ao gravar: {e}")
-            return False
+        except: return False
     return False
 
 def eliminar_registo(indice):
     sheet = conectar_gsheets()
     if sheet:
         try:
-            # +2 porque: linha 1 é cabeçalho + gspread começa no 1
             sheet.delete_rows(indice + 2)
             return True
-        except Exception as e:
-            st.error(f"❌ Erro ao eliminar: {e}")
-            return False
+        except: return False
     return False
 
-# --- FUNÇÃO LOGO ---
 def mostrar_logo():
     try:
         st.image("logo.png", use_container_width=True)
@@ -114,10 +104,8 @@ else:
             st.rerun()
 
     st.title("🚛 Gestão de Frota")
-    
     tab1, tab2 = st.tabs(["➕ Adicionar", "📊 Resumo"])
     
-    # ABA 1: ADICIONAR
     with tab1:
         with st.form("nova_despesa", clear_on_submit=True):
             c1, c2 = st.columns(2)
@@ -127,112 +115,76 @@ else:
             with c2:
                 dt = st.date_input("Data Fatura", datetime.now())
                 nf = st.text_input("Nº Fatura")
-            
             k1, k2, k3 = st.columns(3)
             km = k1.number_input("KMs", step=1)
             val = k2.number_input("Valor (€)", min_value=0.0, step=0.01)
             desc = k3.text_input("Descrição")
-            
             if st.form_submit_button("💾 Gravar", type="primary", use_container_width=True):
                 if val > 0 and nf:
-                    sucesso = guardar_registo([str(datetime.now()), str(dt), mat, cat, val, km, nf, desc])
-                    if sucesso: 
-                        st.success("✅ Fatura registada com sucesso!")
-                else:
-                    st.warning("Preenche Valor e Nº Fatura")
+                    if guardar_registo([str(datetime.now()), str(dt), mat, cat, val, km, nf, desc]):
+                        st.success("✅ Fatura registada!")
+                else: st.warning("Preenche Valor e Nº Fatura")
 
-    # ABA 2: RESUMO
     with tab2:
         df = carregar_dados()
         if not df.empty:
-            if 'Valor' in df.columns:
-                df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
+            df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
+            df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
             
-            # --- MÉTRICAS GERAIS ---
-            c1, c2 = st.columns(2)
-            c1.metric("Total Gasto (Global)", f"{df['Valor'].sum():.2f} €")
-            c2.metric("Nº Faturas (Global)", len(df))
-            
-            st.divider()
-
-            # --- SECÇÃO DE ELIMINAR (Separada para segurança) ---
-            with st.expander("🗑️ Eliminar Fatura (Menu de Gestão)"):
-                col_del1, col_del2 = st.columns(2)
-                
-                # Lista de matrículas para o filtro de eliminação
-                lista_mat_del = ["Todas"] + list(df["Matricula"].unique())
-                filtro_mat_del = col_del1.selectbox("Filtrar Viatura (Eliminar):", lista_mat_del)
-                filtro_doc_del = col_del2.text_input("Pesquisar Doc (Eliminar):")
-
-                df_del = df.copy()
-                df_del['Index_Original'] = df_del.index
-
-                if filtro_mat_del != "Todas":
-                    df_del = df_del[df_del["Matricula"] == filtro_mat_del]
-                if filtro_doc_del:
-                    df_del = df_del[df_del["Num_Fatura"].astype(str).str.contains(filtro_doc_del, case=False)]
-
+            # --- ÁREA DE ELIMINAR ---
+            with st.expander("🗑️ Eliminar Fatura"):
+                col_d1, col_d2 = st.columns(2)
+                l_mat_del = ["Todas"] + list(df["Matricula"].unique())
+                f_mat_del = col_d1.selectbox("Viatura (Eliminar):", l_mat_del)
+                f_doc_del = col_d2.text_input("Nº Fatura (Eliminar):")
+                df_del = df.copy(); df_del['Idx'] = df_del.index
+                if f_mat_del != "Todas": df_del = df_del[df_del["Matricula"] == f_mat_del]
+                if f_doc_del: df_del = df_del[df_del["Num_Fatura"].astype(str).str.contains(f_doc_del, case=False)]
                 if not df_del.empty:
-                    opcoes_del = []
-                    for index, row in df_del.iterrows():
-                        idx_real = row['Index_Original']
-                        texto = f"Linha {idx_real} | {row.get('Data_Fatura','?')} | {row.get('Matricula','?')} | {row.get('Valor','0')}€ | Doc: {row.get('Num_Fatura','?')}"
-                        opcoes_del.append(texto)
-                    
-                    escolha_del = st.selectbox("Selecione para APAGAR:", options=opcoes_del[::-1])
-                    
-                    if st.button("❌ Confirmar Eliminação"):
-                        try:
-                            index_to_delete = int(escolha_del.split(" |")[0].replace("Linha ", ""))
-                            if eliminar_registo(index_to_delete):
-                                st.success("Registo eliminado.")
-                                st.rerun()
-                        except:
-                            st.error("Erro ao eliminar.")
-                else:
-                    st.info("Nada encontrado para eliminar.")
-            
+                    ops = [f"Linha {r.Idx} | {r.Data_Fatura.date()} | {r.Matricula} | {r.Valor}€" for _, r in df_del.iterrows()]
+                    escolha = st.selectbox("Selecionar:", ops[::-1])
+                    if st.button("❌ Confirmar"):
+                        idx = int(escolha.split(" |")[0].replace("Linha ", ""))
+                        if eliminar_registo(idx): st.rerun()
+
             st.divider()
-            
-            # --- GRÁFICOS GERAIS ---
-            st.subheader("💰 Gastos por Viatura")
+            st.subheader("💰 Gastos por Viatura (Global)")
             st.bar_chart(df.groupby("Matricula")["Valor"].sum(), color="#002060")
-            
             st.write("---")
             
-            # --- FILTROS AVANÇADOS (PESQUISA NA TABELA) ---
-            st.subheader("🔍 Filtros de Pesquisa Detalhada")
-            
-            with st.expander("Abrir Filtros de Pesquisa", expanded=True):
-                col_f1, col_f2, col_f3 = st.columns(3)
-                
-                # 1. Filtro Multisseleção de Matrículas
-                todas_matriculas = sorted(df["Matricula"].unique())
-                filtro_matriculas = col_f1.multiselect("Filtrar Matrículas (várias):", todas_matriculas)
-                
-                # 2. Filtro Multisseleção de Categorias
-                todas_categorias = sorted(df["Categoria"].unique())
-                filtro_categorias = col_f2.multiselect("Filtrar Categorias (várias):", todas_categorias)
-                
-                # 3. Filtro Texto Fatura
-                filtro_fatura = col_f3.text_input("Pesquisar Nº Fatura:")
-            
-            # --- LÓGICA DE FILTRAGEM ---
-            df_filtrado = df.copy()
-            
-            if filtro_matriculas:
-                df_filtrado = df_filtrado[df_filtrado["Matricula"].isin(filtro_matriculas)]
-                
-            if filtro_categorias:
-                df_filtrado = df_filtrado[df_filtrado["Categoria"].isin(filtro_categorias)]
-                
-            if filtro_fatura:
-                df_filtrado = df_filtrado[df_filtrado["Num_Fatura"].astype(str).str.contains(filtro_fatura, case=False)]
-            
-            # Mostrar totais da pesquisa
-            if not df_filtrado.empty and (filtro_matriculas or filtro_categorias or filtro_fatura):
-                st.info(f"🔎 Resultados da Pesquisa: **{len(df_filtrado)}** faturas encontradas | Total: **{df_filtrado['Valor'].sum():.2f} €**")
+            # --- FILTROS DE PESQUISA ---
+            st.subheader("🔍 Filtros de Análise Dinâmica")
+            with st.expander("Configurar Filtros", expanded=True):
+                c_f1, c_f2, c_f3 = st.columns(3)
+                f_mats = c_f1.multiselect("Viaturas:", sorted(df["Matricula"].unique()))
+                f_cats = c_f2.multiselect("Categorias:", sorted(df["Categoria"].unique()))
+                f_doc = c_f3.text_input("Nº Fatura:")
 
-            # --- TABELA FINAL ---
+            df_f = df.copy()
+            if f_mats: df_f = df_f[df_f["Matricula"].isin(f_mats)]
+            if f_cats: df_f = df_f[df_f["Categoria"].isin(f_cats)]
+            if f_doc: df_f = df_f[df_f["Num_Fatura"].astype(str).str.contains(f_doc, case=False)]
+
+            # --- NOVOS GRÁFICOS DINÂMICOS ---
+            st.subheader("📊 Análise dos Resultados Filtrados")
+            if not df_f.empty:
+                col_g1, col_g2 = st.columns(2)
+                
+                # Gráfico 1: Evolução Temporal (Linha)
+                df_ev = df_f.groupby(df_f['Data_Fatura'].dt.to_period('M'))['Valor'].sum().reset_index()
+                df_ev['Data_Fatura'] = df_ev['Data_Fatura'].astype(str)
+                fig_line = px.line(df_ev, x='Data_Fatura', y='Valor', title="Evolução Mensal (€)", markers=True)
+                fig_line.update_traces(line_color='#002060')
+                col_g1.plotly_chart(fig_line, use_container_width=True)
+                
+                # Gráfico 2: Distribuição por Categoria (Donut)
+                fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição por Categoria", hole=0.4)
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                col_g2.plotly_chart(fig_pie, use_container_width=True)
+                
+                st.info(f"🔎 **{len(df_f)}** faturas filtradas | Total: **{df_f['Valor'].sum():.2f} €**")
+            else:
+                st.warning("Sem dados para os filtros selecionados.")
+
             st.subheader("📋 Detalhe das Faturas")
-            st.dataframe(df_filtrado, use_container_width=True)
+            st.dataframe(df_f, use_container_width=True)
