@@ -102,4 +102,85 @@ if not st.session_state['logado']:
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar", type="primary", use_container_width=True):
             if senha == "queijo123":
-                st
+                st.session_state['logado'] = True
+                st.rerun()
+            else:
+                st.error("Senha errada!")
+else:
+    with st.sidebar:
+        mostrar_logo()
+        st.write("---")
+        if st.button("Sair"): 
+            st.session_state['logado'] = False
+            st.rerun()
+
+    st.title("🚛 Gestão de Frota")
+    
+    # MUDANÇA 1: Nome da aba simplificado
+    tab1, tab2 = st.tabs(["➕ Adicionar", "📊 Resumo"])
+    
+    # ABA 1: ADICIONAR
+    with tab1:
+        with st.form("nova_despesa", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                mat = st.selectbox("Viatura", ["06-QO-19", "59-RT-87", "19-TF-05", "28-UO-50", "17-UM-19", "83-ZL-79", "83-ZL-83", "AD-66-VN", "AD-71-VN", "AL-36-FF", "AL-30-FF", "AT-79-QU", "AT-87-QU", "BE-64-TJ", "BE-16-TL", "BE-35-TJ", "BL-33-LG", "BL-68-LF", "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"])
+                cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens"])
+            with c2:
+                dt = st.date_input("Data Fatura", datetime.now())
+                nf = st.text_input("Nº Fatura")
+            
+            k1, k2, k3 = st.columns(3)
+            km = k1.number_input("KMs", step=1)
+            val = k2.number_input("Valor (€)", min_value=0.0, step=0.01)
+            desc = k3.text_input("Descrição")
+            
+            if st.form_submit_button("💾 Gravar", type="primary", use_container_width=True):
+                if val > 0 and nf:
+                    sucesso = guardar_registo([str(datetime.now()), str(dt), mat, cat, val, km, nf, desc])
+                    if sucesso: 
+                        # MUDANÇA 2: Apenas mensagem de texto, sem balões
+                        st.success("✅ Fatura registada com sucesso!")
+                else:
+                    st.warning("Preenche Valor e Nº Fatura")
+
+    # ABA 2: RESUMO E ELIMINAR
+    with tab2:
+        df = carregar_dados()
+        if not df.empty:
+            if 'Valor' in df.columns:
+                df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
+            
+            # Métricas
+            c1, c2 = st.columns(2)
+            c1.metric("Total Gasto", f"{df['Valor'].sum():.2f} €")
+            c2.metric("Nº Faturas", len(df))
+            
+            st.divider()
+            
+            # MUDANÇA 3: Texto mais profissional
+            with st.expander("🗑️ Eliminar Fatura"):
+                st.warning("Selecione a fatura para remover permanentemente:")
+                
+                opcoes = []
+                for i, row in df.iterrows():
+                    opcoes.append(f"Linha {i} | {row.get('Data_Fatura','?')} | {row.get('Matricula','?')} | {row.get('Valor','0')}€ | Doc: {row.get('Num_Fatura','?')}")
+                
+                escolha = st.selectbox("Fatura a apagar:", options=opcoes[::-1])
+                
+                if st.button("❌ Confirmar Eliminação"):
+                    try:
+                        index_to_delete = int(escolha.split(" |")[0].replace("Linha ", ""))
+                        if eliminar_registo(index_to_delete):
+                            st.success("Registo eliminado.")
+                            st.rerun()
+                    except:
+                        st.error("Erro ao selecionar.")
+
+            st.divider()
+            
+            st.subheader("💰 Gastos por Viatura")
+            st.bar_chart(df.groupby("Matricula")["Valor"].sum(), color="#002060")
+            
+            st.subheader("📋 Detalhe das Faturas")
+            st.dataframe(df, use_container_width=True)
