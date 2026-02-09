@@ -8,7 +8,7 @@ from datetime import datetime
 # --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# CSS (Visual Profissional e Executivo)
+# CSS (Visual Profissional)
 st.markdown("""
     <style>
     .stApp { background-color: white; }
@@ -141,75 +141,98 @@ else:
                 else:
                     st.warning("Preenche Valor e Nº Fatura")
 
-    # ABA 2: RESUMO E ELIMINAR
+    # ABA 2: RESUMO
     with tab2:
         df = carregar_dados()
         if not df.empty:
             if 'Valor' in df.columns:
                 df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
             
-            # --- MÉTRICAS ---
+            # --- MÉTRICAS GERAIS ---
             c1, c2 = st.columns(2)
-            c1.metric("Total Gasto", f"{df['Valor'].sum():.2f} €")
-            c2.metric("Nº Faturas", len(df))
+            c1.metric("Total Gasto (Global)", f"{df['Valor'].sum():.2f} €")
+            c2.metric("Nº Faturas (Global)", len(df))
             
             st.divider()
-            
-            # --- ÁREA DE ELIMINAR (COM FILTROS) ---
-            with st.expander("🗑️ Eliminar Fatura"):
-                # 1. Filtros de Pesquisa
-                col_filtro1, col_filtro2 = st.columns(2)
-                
-                # Criar lista única de matrículas para o filtro
-                lista_matriculas = ["Todas"] + list(df["Matricula"].unique())
-                filtro_mat = col_filtro1.selectbox("Filtrar por Viatura:", lista_matriculas)
-                
-                filtro_doc = col_filtro2.text_input("Pesquisar Nº Fatura:")
 
-                # 2. Aplicar Filtros ao DataFrame
-                # Criamos uma cópia para não estragar os dados originais
-                df_filtrado = df.copy()
+            # --- SECÇÃO DE ELIMINAR (Separada para segurança) ---
+            with st.expander("🗑️ Eliminar Fatura (Menu de Gestão)"):
+                col_del1, col_del2 = st.columns(2)
                 
-                # Guardamos o índice original (o número da linha real) antes de filtrar
-                df_filtrado['Index_Original'] = df_filtrado.index
+                # Lista de matrículas para o filtro de eliminação
+                lista_mat_del = ["Todas"] + list(df["Matricula"].unique())
+                filtro_mat_del = col_del1.selectbox("Filtrar Viatura (Eliminar):", lista_mat_del)
+                filtro_doc_del = col_del2.text_input("Pesquisar Doc (Eliminar):")
 
-                if filtro_mat != "Todas":
-                    df_filtrado = df_filtrado[df_filtrado["Matricula"] == filtro_mat]
-                
-                if filtro_doc:
-                    # Converte para texto para garantir que encontra mesmo que seja número
-                    df_filtrado = df_filtrado[df_filtrado["Num_Fatura"].astype(str).str.contains(filtro_doc, case=False)]
+                df_del = df.copy()
+                df_del['Index_Original'] = df_del.index
 
-                # 3. Criar Lista para o Selectbox baseada no FILTRO
-                if not df_filtrado.empty:
-                    opcoes = []
-                    # Iterar sobre o dataframe FILTRADO
-                    for index, row in df_filtrado.iterrows():
-                        # O segredo é usar o row['Index_Original'] para saber qual apagar
+                if filtro_mat_del != "Todas":
+                    df_del = df_del[df_del["Matricula"] == filtro_mat_del]
+                if filtro_doc_del:
+                    df_del = df_del[df_del["Num_Fatura"].astype(str).str.contains(filtro_doc_del, case=False)]
+
+                if not df_del.empty:
+                    opcoes_del = []
+                    for index, row in df_del.iterrows():
                         idx_real = row['Index_Original']
                         texto = f"Linha {idx_real} | {row.get('Data_Fatura','?')} | {row.get('Matricula','?')} | {row.get('Valor','0')}€ | Doc: {row.get('Num_Fatura','?')}"
-                        opcoes.append(texto)
+                        opcoes_del.append(texto)
                     
-                    # Mostrar dropdown com as opções filtradas (Invertido para ver recentes primeiro)
-                    escolha = st.selectbox("Selecione a fatura:", options=opcoes[::-1])
+                    escolha_del = st.selectbox("Selecione para APAGAR:", options=opcoes_del[::-1])
                     
                     if st.button("❌ Confirmar Eliminação"):
                         try:
-                            # Extrair o número da linha original
-                            index_to_delete = int(escolha.split(" |")[0].replace("Linha ", ""))
+                            index_to_delete = int(escolha_del.split(" |")[0].replace("Linha ", ""))
                             if eliminar_registo(index_to_delete):
                                 st.success("Registo eliminado.")
                                 st.rerun()
                         except:
-                            st.error("Erro ao processar eliminação.")
+                            st.error("Erro ao eliminar.")
                 else:
-                    st.info("Nenhuma fatura encontrada com esses filtros.")
-
+                    st.info("Nada encontrado para eliminar.")
+            
             st.divider()
             
-            # --- GRÁFICOS ---
+            # --- GRÁFICOS GERAIS ---
             st.subheader("💰 Gastos por Viatura")
             st.bar_chart(df.groupby("Matricula")["Valor"].sum(), color="#002060")
             
+            st.write("---")
+            
+            # --- FILTROS AVANÇADOS (PESQUISA NA TABELA) ---
+            st.subheader("🔍 Filtros de Pesquisa Detalhada")
+            
+            with st.expander("Abrir Filtros de Pesquisa", expanded=True):
+                col_f1, col_f2, col_f3 = st.columns(3)
+                
+                # 1. Filtro Multisseleção de Matrículas
+                todas_matriculas = sorted(df["Matricula"].unique())
+                filtro_matriculas = col_f1.multiselect("Filtrar Matrículas (várias):", todas_matriculas)
+                
+                # 2. Filtro Multisseleção de Categorias
+                todas_categorias = sorted(df["Categoria"].unique())
+                filtro_categorias = col_f2.multiselect("Filtrar Categorias (várias):", todas_categorias)
+                
+                # 3. Filtro Texto Fatura
+                filtro_fatura = col_f3.text_input("Pesquisar Nº Fatura:")
+            
+            # --- LÓGICA DE FILTRAGEM ---
+            df_filtrado = df.copy()
+            
+            if filtro_matriculas:
+                df_filtrado = df_filtrado[df_filtrado["Matricula"].isin(filtro_matriculas)]
+                
+            if filtro_categorias:
+                df_filtrado = df_filtrado[df_filtrado["Categoria"].isin(filtro_categorias)]
+                
+            if filtro_fatura:
+                df_filtrado = df_filtrado[df_filtrado["Num_Fatura"].astype(str).str.contains(filtro_fatura, case=False)]
+            
+            # Mostrar totais da pesquisa
+            if not df_filtrado.empty and (filtro_matriculas or filtro_categorias or filtro_fatura):
+                st.info(f"🔎 Resultados da Pesquisa: **{len(df_filtrado)}** faturas encontradas | Total: **{df_filtrado['Valor'].sum():.2f} €**")
+
+            # --- TABELA FINAL ---
             st.subheader("📋 Detalhe das Faturas")
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df_filtrado, use_container_width=True)
