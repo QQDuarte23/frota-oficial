@@ -15,28 +15,23 @@ def conectar_gsheets():
     try:
         if "service_account" in st.secrets:
             creds_dict = st.secrets["service_account"]
-            # Ajuste para garantir compatibilidade com diferentes formatos de segredo
             if "gcp_json" in creds_dict:
                 creds_json = json.loads(creds_dict["gcp_json"])
             else:
                 creds_json = creds_dict
         else:
-            st.error("❌ Falta a chave secreta [service_account]!")
             return None
 
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
         return client.open(NOME_FOLHA_GOOGLE).sheet1
-    except Exception as e:
-        st.sidebar.error(f"⚠️ Erro Google: {e}")
-        return None
+    except: return None
 
 def carregar_dados():
     sheet = conectar_gsheets()
     if sheet:
         try:
-            data = sheet.get_all_records()
-            df = pd.DataFrame(data)
+            df = pd.DataFrame(sheet.get_all_records())
             if df.empty: return pd.DataFrame(columns=["Data_Registo", "Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
             return df
         except: return pd.DataFrame()
@@ -51,34 +46,30 @@ def guardar_registo(dados):
         except: return False
     return False
 
+# --- FUNÇÃO LOGO ---
+def mostrar_logo():
+    try:
+        st.image("logo.png", width=250)
+    except:
+        st.header("QERQUEIJO 🧀")
+
 # --- INTERFACE ---
 if 'logado' not in st.session_state: st.session_state['logado'] = False
 
 if not st.session_state['logado']:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.header("QERQUEIJO 🧀")
+        st.write(""); st.write("")
+        mostrar_logo()
         st.info("Gestão de Frota Cloud")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar", type="primary", use_container_width=True):
             if senha == "queijo123": st.session_state['logado'] = True
             else: st.error("Senha errada!")
 else:
-    # BARRA LATERAL COM AJUDA
+    # BARRA LATERAL
     with st.sidebar:
-        st.header("QERQUEIJO")
-        st.write("---")
-        try:
-            # Mostrar email para facilitar partilha
-            if "service_account" in st.secrets:
-                if "gcp_json" in st.secrets["service_account"]:
-                    c = json.loads(st.secrets["service_account"]["gcp_json"])
-                else:
-                    c = st.secrets["service_account"]
-                st.info("📧 **Copia este email para o Google Sheets:**")
-                st.code(c.get("client_email", "Erro"), language="text")
-        except: pass
-        
+        mostrar_logo()
         st.write("---")
         if st.button("Sair"): st.session_state['logado'] = False; st.rerun()
 
