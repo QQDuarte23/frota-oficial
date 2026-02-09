@@ -5,10 +5,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 from datetime import datetime
 
-# --- CONFIGURAÇÃO ---
+# --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# FORÇAR CORES (CSS) - Para garantir que fica azul mesmo se o config falhar
+# CSS PARA FORÇAR CORES E VISUAL
 st.markdown("""
     <style>
     .stApp { background-color: white; }
@@ -16,6 +16,7 @@ st.markdown("""
     h1, h2, h3 { color: #002060; }
     .stButton>button { background-color: #002060; color: white; border: none; }
     .stButton>button:hover { background-color: #001540; color: white; }
+    div.stImage > img { display: block; margin-left: auto; margin-right: auto; } /* Centrar imagens */
     </style>
     """, unsafe_allow_html=True)
 
@@ -57,14 +58,14 @@ def guardar_registo(dados):
         except: return False
     return False
 
-# --- FUNÇÃO LOGO INTELIGENTE ---
-def mostrar_logo():
-    # Tenta procurar na pasta principal OU na pasta .streamlit
+# --- FUNÇÃO LOGO GRANDE ---
+def mostrar_logo(tamanho=550):
+    # Procura a imagem em todo o lado
     try:
-        st.image("logo.png", width=250)
+        st.image("logo.png", width=tamanho)
     except:
         try:
-            st.image(".streamlit/logo.png", width=250)
+            st.image(".streamlit/logo.png", width=tamanho)
         except:
             st.header("QERQUEIJO 🧀")
 
@@ -72,10 +73,11 @@ def mostrar_logo():
 if 'logado' not in st.session_state: st.session_state['logado'] = False
 
 if not st.session_state['logado']:
-    col1, col2, col3 = st.columns([1, 2, 1])
+    # Colunas ajustadas para dar mais espaço ao centro [1, 4, 1]
+    col1, col2, col3 = st.columns([1, 4, 1])
     with col2:
         st.write(""); st.write("")
-        mostrar_logo()
+        mostrar_logo(tamanho=600) # Aumentei aqui para ficar bem grande
         st.info("Gestão de Frota Cloud")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar", type="primary", use_container_width=True):
@@ -83,7 +85,7 @@ if not st.session_state['logado']:
             else: st.error("Senha errada!")
 else:
     with st.sidebar:
-        mostrar_logo()
+        mostrar_logo(tamanho=250) # Na barra lateral fica mais pequeno
         st.write("---")
         if st.button("Sair"): st.session_state['logado'] = False; st.rerun()
 
