@@ -5,17 +5,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 from datetime import datetime
 
-# --- CONFIGURAÇÃO VISUAL DIRETA (Sem depender do config.toml) ---
+# --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# Forçar cores via código (CSS) para garantir que fica azul
+# FORÇAR CORES (CSS) - Para garantir que fica azul mesmo se o config falhar
 st.markdown("""
     <style>
     .stApp { background-color: white; }
-    header { visibility: hidden; }
     [data-testid="stSidebar"] { background-color: #F0F2F6; }
     h1, h2, h3 { color: #002060; }
-    .stButton>button { background-color: #002060; color: white; }
+    .stButton>button { background-color: #002060; color: white; border: none; }
+    .stButton>button:hover { background-color: #001540; color: white; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -57,16 +57,19 @@ def guardar_registo(dados):
         except: return False
     return False
 
-# --- INTERFACE ---
-if 'logado' not in st.session_state: st.session_state['logado'] = False
-
+# --- FUNÇÃO LOGO INTELIGENTE ---
 def mostrar_logo():
-    # Tenta mostrar a imagem. Se falhar, avisa QUAL É o erro.
+    # Tenta procurar na pasta principal OU na pasta .streamlit
     try:
         st.image("logo.png", width=250)
-    except Exception as e:
-        st.error(f"⚠️ Não encontrei a imagem 'logo.png'. Erro: {e}")
-        st.header("QERQUEIJO 🧀")
+    except:
+        try:
+            st.image(".streamlit/logo.png", width=250)
+        except:
+            st.header("QERQUEIJO 🧀")
+
+# --- INTERFACE ---
+if 'logado' not in st.session_state: st.session_state['logado'] = False
 
 if not st.session_state['logado']:
     col1, col2, col3 = st.columns([1, 2, 1])
