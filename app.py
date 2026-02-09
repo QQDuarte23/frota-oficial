@@ -22,21 +22,25 @@ st.markdown("""
 
 NOME_FOLHA_GOOGLE = "dados_frota"
 
-# --- LIGAÇÃO GOOGLE SHEETS (VERSÃO RESISTENTE A ERROS 🛡️) ---
+# --- LIGAÇÃO GOOGLE SHEETS (COM FILTRO MÁGICO 🛡️) ---
 def conectar_gsheets():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     try:
         if "service_account" in st.secrets:
             creds_dict = st.secrets["service_account"]
             
-            # --- O TRUQUE ESTÁ AQUI ---
+            # --- CORREÇÃO DO ERRO VERMELHO ---
             if "gcp_json" in creds_dict:
                 raw_json = creds_dict["gcp_json"]
-                # strict=False diz ao Python: "Ignora o lixo invisível e lê na mesma!"
-                creds_json = json.loads(raw_json, strict=False)
+                # O 'strict=False' limpa os caracteres invisíveis
+                try:
+                    creds_json = json.loads(raw_json, strict=False)
+                except:
+                    # Plano B se o filtro falhar
+                    creds_json = json.loads(raw_json)
             else:
                 creds_json = creds_dict
-            # --------------------------
+            # ---------------------------------
 
         else:
             st.error("❌ Erro: Não encontrei a chave 'service_account' nos Segredos!")
@@ -91,5 +95,56 @@ if not st.session_state['logado']:
         st.info("Gestão de Frota Cloud")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar", type="primary", use_container_width=True):
-            if senha == "queijo123": st.session_state['logado'] = True
-            else: st.error("Senha
+            if senha == "queijo123":
+                st.session_state['logado'] = True
+                st.rerun()
+            else:
+                st.error("Senha errada!")
+else:
+    with st.sidebar:
+        mostrar_logo()
+        st.write("---")
+        if st.button("Sair"): 
+            st.session_state['logado'] = False
+            st.rerun()
+
+    st.title("🚛 Gestão de Frota")
+    
+    tab1, tab2 = st.tabs(["➕ Adicionar", "📊 Resumo"])
+    
+    with tab1:
+        with st.form("nova_despesa", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                mat = st.selectbox("Viatura", ["06-QO-19", "59-RT-87", "19-TF-05", "28-UO-50", "17-UM-19", "83-ZL-79", "83-ZL-83", "AD-66-VN", "AD-71-VN", "AL-36-FF", "AL-30-FF", "AT-79-QU", "AT-87-QU", "BE-64-TJ", "BE-16-TL", "BE-35-TJ", "BL-33-LG", "BL-68-LF", "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"])
+                cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens"])
+            with c2:
+                dt = st.date_input("Data Fatura", datetime.now())
+                nf = st.text_input("Nº Fatura")
+            
+            k1, k2, k3 = st.columns(3)
+            km = k1.number_input("KMs", step=1)
+            val = k2.number_input("Valor (€)", min_value=0.0, step=0.01)
+            desc = k3.text_input("Descrição")
+            
+            if st.form_submit_button("💾 Gravar", type="primary", use_container_width=True):
+                if val > 0 and nf:
+                    sucesso = guardar_registo([str(datetime.now()), str(dt), mat, cat, val, km, nf, desc])
+                    if sucesso: st.success("✅ Guardado!"); st.balloons()
+                else:
+                    st.warning("Preenche Valor e Nº Fatura")
+
+    with tab2:
+        df = carregar_dados()
+        if not df.empty:
+            if 'Valor' in df.columns:
+                df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
+            c1, c2 = st.columns(2)
+            c1.metric("Total Gasto", f"{df['Valor'].sum():.2f} €")
+            c2.metric("Nº Faturas", len(df))
+            st.divider()
+            st.subheader("💰 Gastos por Viatura")
+            st.bar_chart(df.groupby("Matricula")["Valor"].sum(), color="#002060")
+            st.divider()
+            st.subheader("📋 Detalhe das Faturas")
+            st.dataframe(df, use_container_width=True)
