@@ -6,11 +6,23 @@ import json
 from datetime import datetime
 import plotly.express as px
 
-# --- CONFIGURAÇÃO VISUAL ---
+# --- CONFIGURAÇÃO VISUAL E REMOÇÃO DE ELEMENTOS DA PLATAFORMA ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
+# CSS Mágico para esconder: Header, Footer e Botão Manage App
 st.markdown("""
     <style>
+    /* Esconder o Header (ícones do canto superior) */
+    header {visibility: hidden;}
+    
+    /* Esconder o Footer (Made with Streamlit) */
+    footer {visibility: hidden;}
+
+    /* Esconder o botão 'Manage App' e outros elementos de ancoragem */
+    .stAppDeployButton {display:none;}
+    #MainMenu {visibility: hidden;}
+    
+    /* Ajustes de Design Profissional */
     .stApp { background-color: white; }
     [data-testid="stSidebar"] { background-color: #F0F2F6; }
     h1, h2, h3 { color: #002060; }
@@ -38,7 +50,6 @@ def conectar_gsheets():
             return None
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
-        # Atenção: Ajusta o nome da folha se mudaste para 'Folha1' no Sheets
         return client.open(NOME_FOLHA_GOOGLE).sheet1
     except: return None
 
@@ -47,7 +58,6 @@ def carregar_dados():
     if sheet:
         try:
             df = pd.DataFrame(sheet.get_all_records())
-            # Nova estrutura sem Data_Registo
             if df.empty: return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
             return df
         except: return pd.DataFrame()
@@ -77,6 +87,7 @@ def mostrar_logo():
     except:
         st.header("QERQUEIJO 🧀")
 
+# --- INTERFACE DE LOGIN ---
 if 'logado' not in st.session_state: st.session_state['logado'] = False
 
 if not st.session_state['logado']:
@@ -84,7 +95,7 @@ if not st.session_state['logado']:
     with col2:
         st.write(""); st.write("")
         mostrar_logo()
-        st.info("Gestão de Frota Cloud")
+        # Removido o texto "Gestão de Frota Cloud" daqui
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar", type="primary", use_container_width=True):
             if senha == "queijo123":
@@ -93,6 +104,7 @@ if not st.session_state['logado']:
             else:
                 st.error("Senha errada!")
 else:
+    # Conteúdo principal da App após login
     with st.sidebar:
         mostrar_logo()
         st.write("---")
@@ -118,7 +130,6 @@ else:
             desc = k3.text_input("Descrição")
             if st.form_submit_button("💾 Gravar", type="primary", use_container_width=True):
                 if val > 0 and nf:
-                    # REMOVIDO o datetime.now() inicial
                     if guardar_registo([str(dt), mat, cat, val, km, nf, desc]):
                         st.success("✅ Fatura registada!")
                         st.rerun()
@@ -147,7 +158,6 @@ else:
 
             st.divider()
             
-            # FILTROS DE PESQUISA
             st.subheader("🔍 Filtros de Análise")
             with st.expander("Configurar Filtros", expanded=True):
                 c_f1, c_f2, c_f3 = st.columns(3)
@@ -160,7 +170,6 @@ else:
             if f_cats: df_f = df_f[df_f["Categoria"].isin(f_cats)]
             if f_doc: df_f = df_f[df_f["Num_Fatura"].astype(str).str.contains(f_doc, case=False)]
 
-            # GRÁFICOS DINÂMICOS
             if not df_f.empty:
                 col_g1, col_g2 = st.columns(2)
                 df_ev = df_f.groupby(df_f['Data_Fatura'].dt.to_period('M'))['Valor'].sum().reset_index()
