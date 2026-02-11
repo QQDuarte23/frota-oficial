@@ -3,49 +3,36 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.express as px
 
 # --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# --- CSS NUCLEAR: FORÇA BRUTA NO BOTÃO DO MENU ---
+# --- LISTA MESTRA DE VIATURAS (Adiciona ou remove matrículas aqui) ---
+LISTA_VIATURAS = [
+    "06-QO-19", "59-RT-87", "19-TF-05", "28-UO-50", "17-UM-19", "83-ZL-79", 
+    "83-ZL-83", "AD-66-VN", "AD-71-VN", "AL-36-FF", "AL-30-FF", "AT-79-QU", 
+    "AT-87-QU", "BE-64-TJ", "BE-16-TL", "BE-35-TJ", "BL-33-LG", "BL-68-LF", 
+    "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"
+]
+
+# --- CSS LIMPO ---
 st.markdown("""
     <style>
-    /* 1. Esconder TUDO o que é barra de topo e ferramentas */
-    [data-testid="stToolbar"] {visibility: hidden !important;}
-    [data-testid="stDecoration"] {display: none !important;}
-    header[data-testid="stHeader"] {background-color: transparent !important;}
-    
-    /* 2. Esconder Rodapé e Manage App */
-    footer {display: none !important;}
-    .stAppDeployButton {display: none !important;}
-
-    /* 3. A SOLUÇÃO NUCLEAR PARA O BOTÃO DO MENU */
-    /* Isto arranca o botão do sítio normal e cola-o no canto do ecrã */
-    [data-testid="stSidebarCollapsedControl"] {
-        position: fixed !important;    /* Fica fixo no ecrã */
-        top: 15px !important;          /* 15px do topo */
-        left: 15px !important;         /* 15px da esquerda */
-        z-index: 1000001 !important;   /* Fica por cima de TUDO */
-        display: block !important;
-        visibility: visible !important;
-        color: #002060 !important;     /* Cor Azul */
-        background-color: rgba(255,255,255,0.8) !important; /* Fundo branquinho para se ver bem */
-        border-radius: 50% !important; /* Redondo */
-        width: 40px !important;
-        height: 40px !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
-
-    /* 4. Ajustes gerais */
+    footer {visibility: hidden;}
+    .stAppDeployButton {display: none;}
     .stApp { background-color: white; }
     [data-testid="stSidebar"] { background-color: #F0F2F6; }
     h1, h2, h3 { color: #002060; }
     .stButton>button { background-color: #002060; color: white; border: none; }
     .stButton>button:hover { background-color: #001540; color: white; }
-    div.stImage > img { display: block; margin-left: auto; margin-right: auto; }
+    /* Estilo para as métricas de validade */
+    div[data-testid="metric-container"] {
+        background-color: #F0F2F6;
+        padding: 10px;
+        border-radius: 5px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -57,23 +44,21 @@ def conectar_gsheets():
         if "service_account" in st.secrets:
             creds_dict = st.secrets["service_account"]
             if "gcp_json" in creds_dict:
-                try:
-                    creds_json = json.loads(creds_dict["gcp_json"], strict=False)
-                except:
-                    creds_json = json.loads(creds_dict["gcp_json"])
-            else:
-                creds_json = creds_dict
-        else:
-            return None
+                try: creds_json = json.loads(creds_dict["gcp_json"], strict=False)
+                except: creds_json = json.loads(creds_dict["gcp_json"])
+            else: creds_json = creds_dict
+        else: return None
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
-        return client.open(NOME_FOLHA_GOOGLE).sheet1
+        return client.open(NOME_FOLHA_GOOGLE)
     except: return None
 
+# --- FUNÇÕES DE DADOS (FATURAS) ---
 def carregar_dados():
-    sheet = conectar_gsheets()
-    if sheet:
+    wb = conectar_gsheets()
+    if wb:
         try:
+            sheet = wb.sheet1 # Assume que a folha de faturas é a primeira
             df = pd.DataFrame(sheet.get_all_records())
             if df.empty: return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
             return df
@@ -81,47 +66,97 @@ def carregar_dados():
     return pd.DataFrame()
 
 def guardar_registo(dados):
-    sheet = conectar_gsheets()
-    if sheet:
+    wb = conectar_gsheets()
+    if wb:
         try:
-            sheet.append_row(dados)
+            wb.sheet1.append_row(dados)
             return True
         except: return False
     return False
 
 def eliminar_registo(indice):
-    sheet = conectar_gsheets()
-    if sheet:
+    wb = conectar_gsheets()
+    if wb:
         try:
-            sheet.delete_rows(indice + 2)
+            wb.sheet1.delete_rows(indice + 2)
             return True
         except: return False
     return False
 
-# --- FUNÇÃO DO LOGO INTELIGENTE ---
-def mostrar_logo():
-    caminhos_possiveis = [
-        ".streamlit/logo.png",
-        "logo.png",
-        ".streamlit/Logo.png",
-        "Logo.png",
-        ".streamlit/logo.jpg",
-        "logo.jpg"
-    ]
-    
-    encontrou = False
-    for caminho in caminhos_possiveis:
+# --- FUNÇÕES DE DADOS (VALIDADES) ---
+def carregar_validades():
+    wb = conectar_gsheets()
+    if wb:
         try:
-            st.image(caminho, use_container_width=True)
-            encontrou = True
-            break 
-        except:
-            continue
+            # Tenta abrir a aba 'Validades'. Se não existir, dá erro (o utilizador tem de criar)
+            sheet = wb.worksheet("Validades")
+            data = sheet.get_all_records()
+            if not data: return pd.DataFrame(columns=["Matricula", "Data_Seguro", "Data_Inspecao", "Data_IUC", "Observacoes"])
             
-    if not encontrou:
-        st.header("QERQUEIJO 🧀")
+            df = pd.DataFrame(data)
+            # Truque: Como estamos sempre a acrescentar linhas, vamos agrupar por Matricula e ficar só com a última entrada (a mais recente)
+            df = df.groupby('Matricula').tail(1).reset_index(drop=True)
+            return df
+        except: 
+            st.error("⚠️ Erro: Não encontrei a aba 'Validades' no Google Sheets. Cria-a primeiro!")
+            return pd.DataFrame()
+    return pd.DataFrame()
 
-# --- INTERFACE DE LOGIN ---
+def guardar_validade_nova(dados):
+    wb = conectar_gsheets()
+    if wb:
+        try:
+            sheet = wb.worksheet("Validades")
+            sheet.append_row(dados)
+            return True
+        except: return False
+    return False
+
+# --- FUNÇÃO DO LOGO ---
+def mostrar_logo():
+    caminhos = [".streamlit/logo.png", "logo.png", ".streamlit/Logo.png", "Logo.png", "logo.jpg"]
+    encontrou = False
+    for c in caminhos:
+        try:
+            st.image(c, use_container_width=True)
+            encontrou = True
+            break
+        except: continue
+    if not encontrou: st.header("QERQUEIJO 🧀")
+
+# --- LÓGICA DE ALERTAS ---
+def verificar_alertas(df_val):
+    if df_val.empty: return
+    
+    hoje = datetime.now().date()
+    
+    # Vamos verificar cada linha
+    for _, row in df_val.iterrows():
+        mat = row['Matricula']
+        
+        # Lista de campos a verificar
+        verificacoes = {
+            "Seguro": row.get('Data_Seguro'),
+            "Inspeção": row.get('Data_Inspecao'),
+            "IUC": row.get('Data_IUC')
+        }
+        
+        for tipo, data_str in verificacoes.items():
+            if data_str and str(data_str).strip() != "":
+                try:
+                    data_val = datetime.strptime(str(data_str), "%Y-%m-%d").date()
+                    dias_restantes = (data_val - hoje).days
+                    
+                    if dias_restantes < 0:
+                        st.error(f"🚨 **URGENTE ({mat}):** {tipo} expirou dia {data_val.strftime('%d/%m')}! (Atraso: {abs(dias_restantes)} dias)")
+                    elif dias_restantes <= 7:
+                        st.error(f"⏰ **CRÍTICO ({mat}):** {tipo} vence em {dias_restantes} dias ({data_val.strftime('%d/%m')})")
+                    elif dias_restantes <= 30:
+                        st.warning(f"⚠️ **Atenção ({mat}):** {tipo} vence em {dias_restantes} dias ({data_val.strftime('%d/%m')})")
+                except:
+                    continue # Ignora datas mal formatadas
+
+# --- APP PRINCIPAL ---
 if 'logado' not in st.session_state: st.session_state['logado'] = False
 
 if not st.session_state['logado']:
@@ -134,10 +169,8 @@ if not st.session_state['logado']:
             if senha == "queijo123":
                 st.session_state['logado'] = True
                 st.rerun()
-            else:
-                st.error("Senha errada!")
+            else: st.error("Senha errada!")
 else:
-    # --- BARRA LATERAL (MENU) ---
     with st.sidebar:
         mostrar_logo()
         st.write("---")
@@ -145,14 +178,22 @@ else:
             st.session_state['logado'] = False
             st.rerun()
 
+    # --- VERIFICAÇÃO DE ALERTAS NO TOPO ---
+    df_alertas = carregar_validades()
+    if not df_alertas.empty:
+        verificar_alertas(df_alertas)
+
     st.title("🚛 Gestão de Frota")
-    tab1, tab2 = st.tabs(["➕ Adicionar", "📊 Resumo"])
     
+    # AGORA SÃO 3 ABAS
+    tab1, tab2, tab3 = st.tabs(["➕ Adicionar Despesa", "📊 Resumo Financeiro", "📅 Validades & Alertas"])
+    
+    # --- ABA 1: ADICIONAR ---
     with tab1:
         with st.form("nova_despesa", clear_on_submit=True):
             c1, c2 = st.columns(2)
             with c1:
-                mat = st.selectbox("Viatura", ["06-QO-19", "59-RT-87", "19-TF-05", "28-UO-50", "17-UM-19", "83-ZL-79", "83-ZL-83", "AD-66-VN", "AD-71-VN", "AL-36-FF", "AL-30-FF", "AT-79-QU", "AT-87-QU", "BE-64-TJ", "BE-16-TL", "BE-35-TJ", "BL-33-LG", "BL-68-LF", "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"])
+                mat = st.selectbox("Viatura", LISTA_VIATURAS)
                 cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens"])
             with c2:
                 dt = st.date_input("Data Fatura", datetime.now())
@@ -168,26 +209,22 @@ else:
                         st.rerun()
                 else: st.warning("Preenche Valor e Nº Fatura")
 
+    # --- ABA 2: RESUMO FINANCEIRO ---
     with tab2:
         df = carregar_dados()
         if not df.empty:
-            
-            # --- CORREÇÃO INTELIGENTE DE VALORES ---
             def corrigir_valor(v):
                 try:
                     v_str = str(v).replace('€', '').replace(',', '.')
                     valor_float = float(v_str)
-                    if valor_float > 2000:
-                        return valor_float / 100
+                    if valor_float > 2000: return valor_float / 100
                     return valor_float
-                except:
-                    return 0.0
+                except: return 0.0
 
             df['Valor'] = df['Valor'].apply(corrigir_valor)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
-            # --- ÁREA DE ELIMINAR ---
             with st.expander("🗑️ Eliminar Fatura"):
                 col_d1, col_d2 = st.columns(2)
                 l_mat_del = ["Todas"] + list(df["Matricula"].unique())
@@ -205,9 +242,8 @@ else:
 
             st.divider()
             
-            # --- FILTROS ---
-            st.subheader("🔍 Filtros de Análise")
-            with st.expander("Configurar Filtros", expanded=True):
+            # Filtros
+            with st.expander("🔍 Configurar Filtros", expanded=True):
                 c_f1, c_f2, c_f3 = st.columns(3)
                 f_mats = c_f1.multiselect("Viaturas:", sorted(df["Matricula"].unique()))
                 f_cats = c_f2.multiselect("Categorias:", sorted(df["Categoria"].unique()))
@@ -218,7 +254,6 @@ else:
             if f_cats: df_f = df_f[df_f["Categoria"].isin(f_cats)]
             if f_doc: df_f = df_f[df_f["Num_Fatura"].astype(str).str.contains(f_doc, case=False)]
 
-            # --- GRÁFICOS ---
             if not df_f.empty:
                 col_g1, col_g2 = st.columns(2)
                 df_ev = df_f.groupby(df_f['Data_Fatura'].dt.to_period('M'))['Valor'].sum().reset_index()
@@ -231,10 +266,7 @@ else:
                 col_g2.plotly_chart(fig_pie, use_container_width=True)
 
                 st.subheader("📋 Detalhe das Faturas")
-                st.dataframe(
-                    df_f,
-                    use_container_width=True,
-                    hide_index=True,
+                st.dataframe(df_f, use_container_width=True, hide_index=True,
                     column_order=["Data_Fatura", "Matricula", "Categoria", "Valor_Visual", "KM_Atuais", "Num_Fatura", "Descricao"],
                     column_config={
                         "Matricula": st.column_config.TextColumn("Viatura"),
@@ -246,5 +278,69 @@ else:
                         "Descricao": st.column_config.TextColumn("Descrição")
                     }
                 )
-            else:
-                st.warning("Sem dados para os filtros selecionados.")
+            else: st.warning("Sem dados.")
+
+    # --- ABA 3: VALIDADES ---
+    with tab3:
+        st.header("📅 Controlo de Prazos")
+        
+        # Formulário para atualizar
+        with st.expander("📝 Atualizar Validade (Seguro/Inspeção/IUC)", expanded=True):
+            with st.form("form_validade"):
+                c_v1, c_v2 = st.columns(2)
+                v_mat = c_v1.selectbox("Qual a Viatura?", LISTA_VIATURAS)
+                v_obs = c_v2.text_input("Observações (Opcional)")
+                
+                c_d1, c_d2, c_d3 = st.columns(3)
+                # Deixa vazio por defeito para obrigar a escolher
+                d_seg = c_d1.date_input("Próximo Seguro", value=None)
+                d_insp = c_d2.date_input("Próxima Inspeção", value=None)
+                d_iuc = c_d3.date_input("Próximo IUC", value=None)
+                
+                if st.form_submit_button("Atualizar Datas", type="primary", use_container_width=True):
+                    # Prepara os dados. Se a data for None, grava string vazia
+                    dados_v = [
+                        v_mat,
+                        str(d_seg) if d_seg else "",
+                        str(d_insp) if d_insp else "",
+                        str(d_iuc) if d_iuc else "",
+                        v_obs
+                    ]
+                    if guardar_validade_nova(dados_v):
+                        st.success(f"✅ Dados da {v_mat} atualizados!")
+                        st.rerun()
+                    else:
+                        st.error("Erro ao gravar. Verificaste se criaste a aba 'Validades' no Sheets?")
+
+        st.divider()
+        st.subheader("📋 Estado Geral da Frota")
+        
+        # Mostra a tabela de validades cruzada com a lista de matrículas
+        df_vals = carregar_validades()
+        
+        # Criar uma tabela bonita que mostre TODAS as viaturas, mesmo as sem dados
+        df_master = pd.DataFrame({"Matricula": LISTA_VIATURAS})
+        
+        if not df_vals.empty:
+            # Junta os dados gravados com a lista mestra
+            df_final = pd.merge(df_master, df_vals, on="Matricula", how="left").fillna("")
+        else:
+            df_final = df_master
+            df_final["Data_Seguro"] = ""
+            df_final["Data_Inspecao"] = ""
+            df_final["Data_IUC"] = ""
+            df_final["Observacoes"] = ""
+
+        # Mostra a tabela
+        st.dataframe(
+            df_final,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Matricula": st.column_config.TextColumn("Viatura", width="small"),
+                "Data_Seguro": st.column_config.DateColumn("Seguro", format="DD/MM/YYYY"),
+                "Data_Inspecao": st.column_config.DateColumn("Inspeção", format="DD/MM/YYYY"),
+                "Data_IUC": st.column_config.DateColumn("IUC", format="DD/MM/YYYY"),
+                "Observacoes": st.column_config.TextColumn("Notas")
+            }
+        )
