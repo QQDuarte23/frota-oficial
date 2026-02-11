@@ -17,23 +17,13 @@ LISTA_VIATURAS = [
     "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"
 ]
 
-# CSS: Esconde topos e rodapés, MAS MOSTRA A SETA (stSidebarCollapsedControl)
+# CSS Limpo
 st.markdown("""
     <style>
-    /* Esconde barra de ferramentas (canto superior direito) e rodapé */
+    /* Esconde barra de topo e rodapé */
     [data-testid="stToolbar"] {visibility: hidden !important;}
     footer {visibility: hidden;}
     .stAppDeployButton {display: none;}
-    
-    /* Cabeçalho transparente, mas permite clicar nos botões */
-    header[data-testid="stHeader"] {background: transparent !important;}
-    
-    /* A MÁGICA: Forçar a seta do menu lateral a ser visível e AZUL */
-    [data-testid="stSidebarCollapsedControl"] {
-        display: block !important;
-        color: #002060 !important;
-        font-weight: bold;
-    }
     
     /* Cores da Marca */
     .stApp { background-color: white; }
@@ -43,12 +33,22 @@ st.markdown("""
     .stButton>button:hover { background-color: #001540; color: white; }
     div.stImage > img { display: block; margin-left: auto; margin-right: auto; }
     
-    /* Ajuste visual do Menu Horizontal */
-    div[role="radiogroup"] > label > div:first-of-type { display: none; }
-    div[role="radiogroup"] { flex-direction: row; justify-content: center; gap: 20px; }
+    /* Ajuste visual do Menu Horizontal (Radio) */
+    div[role="radiogroup"] > label > div:first-of-type {
+        display: none;
+    }
+    div[role="radiogroup"] {
+        flex-direction: row;
+        justify-content: center;
+        gap: 20px;
+    }
     
     /* Métrica de Alertas */
-    div[data-testid="metric-container"] { background-color: #F0F2F6; padding: 10px; border-radius: 5px; }
+    div[data-testid="metric-container"] {
+        background-color: #F0F2F6;
+        padding: 10px;
+        border-radius: 5px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -118,6 +118,7 @@ def carregar_validades():
     return pd.DataFrame()
 
 def guardar_validade_nova(dados):
+    # dados = [Matricula, Seg, Insp, IUC, Obs]
     wb = conectar_gsheets()
     if wb:
         try:
@@ -189,11 +190,10 @@ if not st.session_state['logado']:
                 st.rerun()
             else: st.error("Senha errada!")
 else:
-    # --- BARRA LATERAL (PARA SAIR) ---
     with st.sidebar:
         mostrar_logo()
         st.write("---")
-        if st.button("Sair (Logout)"): 
+        if st.button("Sair"): 
             st.session_state['logado'] = False
             st.rerun()
 
@@ -202,7 +202,7 @@ else:
 
     st.title("🚛 Gestão de Frota")
 
-    # --- MENU DE NAVEGAÇÃO HORIZONTAL ---
+    # --- MENU DE NAVEGAÇÃO ---
     menu = st.radio("", ["➕ Adicionar Despesa", "📊 Resumo Financeiro", "📅 Validades & Alertas"], horizontal=True)
     st.divider()
 
@@ -243,6 +243,7 @@ else:
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
+            # Área de Eliminar (Mantida)
             with st.expander("🗑️ Eliminar Fatura"):
                 col_d1, col_d2 = st.columns(2)
                 l_mat_del = ["Todas"] + list(df["Matricula"].unique())
@@ -260,6 +261,7 @@ else:
 
             st.divider()
             
+            # Filtros (Mantidos)
             with st.expander("🔍 Configurar Filtros", expanded=True):
                 c_f1, c_f2, c_f3 = st.columns(3)
                 f_mats = c_f1.multiselect("Viaturas:", sorted(df["Matricula"].unique()))
@@ -273,15 +275,41 @@ else:
 
             if not df_f.empty:
                 col_g1, col_g2 = st.columns(2)
-                df_ev = df_f.groupby(df_f['Data_Fatura'].dt.to_period('M'))['Valor'].sum().reset_index()
-                df_ev['Data_Fatura'] = df_ev['Data_Fatura'].astype(str)
-                fig_line = px.line(df_ev, x='Data_Fatura', y='Valor', title="Evolução Mensal (€)", markers=True)
-                fig_line.update_traces(line_color='#002060')
-                col_g1.plotly_chart(fig_line, use_container_width=True)
                 
-                fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição por Categoria", hole=0.4)
+                # --- GRÁFICO 1: EVOLUÇÃO EMPILHADA (Substitui o de linha) ---
+                df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
+                df_ev.columns = ['Mês', 'Categoria', 'Valor'] # Renomear para o gráfico entender
+                
+                fig_bar_stack = px.bar(
+                    df_ev, 
+                    x='Mês', 
+                    y='Valor', 
+                    color='Categoria', 
+                    title="Evolução Mensal (Por Tipo de Despesa)",
+                    text_auto='.2s'
+                )
+                col_g1.plotly_chart(fig_bar_stack, use_container_width=True)
+                
+                # --- GRÁFICO 2: PIE CHART (Mantido) ---
+                fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição de Custos", hole=0.4)
                 col_g2.plotly_chart(fig_pie, use_container_width=True)
 
+                # --- GRÁFICO 3: RANKING DE GASTADORES (Novo, no fundo) ---
+                st.write("") # Espaço
+                df_ranking = df_f.groupby('Matricula')['Valor'].sum().reset_index().sort_values('Valor', ascending=False)
+                fig_ranking = px.bar(
+                    df_ranking, 
+                    x='Matricula', 
+                    y='Valor', 
+                    title="🏆 Ranking de Despesas por Viatura",
+                    text_auto='.2s',
+                    color='Valor',
+                    color_continuous_scale='Blues'
+                )
+                fig_ranking.update_layout(xaxis_title="Viatura", yaxis_title="Total Gasto (€)")
+                st.plotly_chart(fig_ranking, use_container_width=True)
+
+                st.divider()
                 st.subheader("📋 Detalhe das Faturas")
                 st.dataframe(df_f, use_container_width=True, hide_index=True,
                     column_order=["Data_Fatura", "Matricula", "Categoria", "Valor_Visual", "KM_Atuais", "Num_Fatura", "Descricao"],
@@ -323,7 +351,7 @@ else:
                     ]
                     if guardar_validade_nova(dados_v):
                         st.success(f"✅ Dados da {v_mat} atualizados!")
-                        st.rerun() # FICA AQUI na mesma aba!
+                        st.rerun() 
                     else: st.error("Erro. Verifica se colaste as matrículas na Coluna A do Sheets.")
 
         st.divider()
