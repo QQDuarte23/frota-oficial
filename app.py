@@ -22,7 +22,6 @@ st.markdown("""
 
 NOME_FOLHA_GOOGLE = "dados_frota"
 
-# --- LIGAÇÃO GOOGLE SHEETS ---
 def conectar_gsheets():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     try:
@@ -39,6 +38,7 @@ def conectar_gsheets():
             return None
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
+        # Atenção: Ajusta o nome da folha se mudaste para 'Folha1' no Sheets
         return client.open(NOME_FOLHA_GOOGLE).sheet1
     except: return None
 
@@ -47,7 +47,8 @@ def carregar_dados():
     if sheet:
         try:
             df = pd.DataFrame(sheet.get_all_records())
-            if df.empty: return pd.DataFrame(columns=["Data_Registo", "Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
+            # Nova estrutura sem Data_Registo
+            if df.empty: return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
             return df
         except: return pd.DataFrame()
     return pd.DataFrame()
@@ -74,12 +75,8 @@ def mostrar_logo():
     try:
         st.image("logo.png", use_container_width=True)
     except:
-        try:
-            st.image(".streamlit/logo.png", use_container_width=True)
-        except:
-            st.header("QERQUEIJO 🧀")
+        st.header("QERQUEIJO 🧀")
 
-# --- INTERFACE ---
 if 'logado' not in st.session_state: st.session_state['logado'] = False
 
 if not st.session_state['logado']:
@@ -121,8 +118,10 @@ else:
             desc = k3.text_input("Descrição")
             if st.form_submit_button("💾 Gravar", type="primary", use_container_width=True):
                 if val > 0 and nf:
-                    if guardar_registo([str(datetime.now()), str(dt), mat, cat, val, km, nf, desc]):
+                    # REMOVIDO o datetime.now() inicial
+                    if guardar_registo([str(dt), mat, cat, val, km, nf, desc]):
                         st.success("✅ Fatura registada!")
+                        st.rerun()
                 else: st.warning("Preenche Valor e Nº Fatura")
 
     with tab2:
@@ -131,7 +130,6 @@ else:
             df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
             
-            # --- ÁREA DE ELIMINAR ---
             with st.expander("🗑️ Eliminar Fatura"):
                 col_d1, col_d2 = st.columns(2)
                 l_mat_del = ["Todas"] + list(df["Matricula"].unique())
@@ -148,12 +146,9 @@ else:
                         if eliminar_registo(idx): st.rerun()
 
             st.divider()
-            st.subheader("💰 Gastos por Viatura (Global)")
-            st.bar_chart(df.groupby("Matricula")["Valor"].sum(), color="#002060")
-            st.write("---")
             
-            # --- FILTROS DE PESQUISA ---
-            st.subheader("🔍 Filtros de Análise Dinâmica")
+            # FILTROS DE PESQUISA
+            st.subheader("🔍 Filtros de Análise")
             with st.expander("Configurar Filtros", expanded=True):
                 c_f1, c_f2, c_f3 = st.columns(3)
                 f_mats = c_f1.multiselect("Viaturas:", sorted(df["Matricula"].unique()))
@@ -165,26 +160,17 @@ else:
             if f_cats: df_f = df_f[df_f["Categoria"].isin(f_cats)]
             if f_doc: df_f = df_f[df_f["Num_Fatura"].astype(str).str.contains(f_doc, case=False)]
 
-            # --- NOVOS GRÁFICOS DINÂMICOS ---
-            st.subheader("📊 Análise dos Resultados Filtrados")
+            # GRÁFICOS DINÂMICOS
             if not df_f.empty:
                 col_g1, col_g2 = st.columns(2)
-                
-                # Gráfico 1: Evolução Temporal (Linha)
                 df_ev = df_f.groupby(df_f['Data_Fatura'].dt.to_period('M'))['Valor'].sum().reset_index()
                 df_ev['Data_Fatura'] = df_ev['Data_Fatura'].astype(str)
                 fig_line = px.line(df_ev, x='Data_Fatura', y='Valor', title="Evolução Mensal (€)", markers=True)
                 fig_line.update_traces(line_color='#002060')
                 col_g1.plotly_chart(fig_line, use_container_width=True)
                 
-                # Gráfico 2: Distribuição por Categoria (Donut)
                 fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição por Categoria", hole=0.4)
-                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
                 col_g2.plotly_chart(fig_pie, use_container_width=True)
-                
-                st.info(f"🔎 **{len(df_f)}** faturas filtradas | Total: **{df_f['Valor'].sum():.2f} €**")
-            else:
-                st.warning("Sem dados para os filtros selecionados.")
 
             st.subheader("📋 Detalhe das Faturas")
             st.dataframe(df_f, use_container_width=True)
