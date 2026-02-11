@@ -50,8 +50,7 @@ def conectar_gsheets():
             return None
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
-        # Tenta abrir a folha. Se mudaste o nome para Folha1, ajusta aqui se der erro.
-        # Por defeito, tenta abrir a primeira aba disponível.
+        # Tenta abrir a folha. Ajusta se mudaste o nome.
         return client.open(NOME_FOLHA_GOOGLE).sheet1
     except: return None
 
@@ -131,7 +130,6 @@ else:
             desc = k3.text_input("Descrição")
             if st.form_submit_button("💾 Gravar", type="primary", use_container_width=True):
                 if val > 0 and nf:
-                    # Grava a data formatada como string
                     if guardar_registo([str(dt), mat, cat, val, km, nf, desc]):
                         st.success("✅ Fatura registada!")
                         st.rerun()
@@ -140,10 +138,31 @@ else:
     with tab2:
         df = carregar_dados()
         if not df.empty:
-            # Converter colunas para tipos corretos
-            df['Valor'] = pd.to_numeric(df['Valor'].astype(str).str.replace('€','').str.replace(',','.'), errors='coerce').fillna(0)
-            df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
             
+            # --- CORREÇÃO INTELIGENTE DE VALORES ---
+            def corrigir_valor(v):
+                try:
+                    # Remove símbolo de Euro e troca vírgula por ponto para cálculo
+                    v_str = str(v).replace('€', '').replace(',', '.')
+                    valor_float = float(v_str)
+                    
+                    # REGRA DE OURO: Se for maior que 2000, assume erro de vírgula e divide por 100
+                    # Exemplo: 8652 transforma-se em 86.52
+                    if valor_float > 2000:
+                        return valor_float / 100
+                    return valor_float
+                except:
+                    return 0.0
+
+            # Aplica a correção a toda a coluna de Valor
+            df['Valor'] = df['Valor'].apply(corrigir_valor)
+            
+            # Cria coluna visual com VÍRGULA (Formato Português: 86,52 €)
+            df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
+
+            # Trata as datas
+            df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
+
             # --- ÁREA DE ELIMINAR ---
             with st.expander("🗑️ Eliminar Fatura"):
                 col_d1, col_d2 = st.columns(2)
@@ -163,7 +182,7 @@ else:
 
             st.divider()
             
-            # --- FILTROS DE PESQUISA ---
+            # --- FILTROS ---
             st.subheader("🔍 Filtros de Análise")
             with st.expander("Configurar Filtros", expanded=True):
                 c_f1, c_f2, c_f3 = st.columns(3)
@@ -176,7 +195,7 @@ else:
             if f_cats: df_f = df_f[df_f["Categoria"].isin(f_cats)]
             if f_doc: df_f = df_f[df_f["Num_Fatura"].astype(str).str.contains(f_doc, case=False)]
 
-            # --- GRÁFICOS E TABELA ---
+            # --- GRÁFICOS ---
             if not df_f.empty:
                 col_g1, col_g2 = st.columns(2)
                 
@@ -191,27 +210,21 @@ else:
                 fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição por Categoria", hole=0.4)
                 col_g2.plotly_chart(fig_pie, use_container_width=True)
 
-                # --- TABELA DETALHADA FORMATADA ---
+                # --- TABELA FINAL CORRIGIDA ---
                 st.subheader("📋 Detalhe das Faturas")
+                
                 st.dataframe(
                     df_f,
                     use_container_width=True,
                     hide_index=True,
+                    # Aqui definimos a ordem e usamos a coluna "Valor_Visual" em vez da "Valor" original
+                    column_order=["Data_Fatura", "Matricula", "Categoria", "Valor_Visual", "KM_Atuais", "Num_Fatura", "Descricao"],
                     column_config={
                         "Matricula": st.column_config.TextColumn("Viatura"),
                         "Categoria": st.column_config.TextColumn("Categoria"),
-                        "Valor": st.column_config.NumberColumn(
-                            "Valor (€)",
-                            format="%.2f €"
-                        ),
-                        "KM_Atuais": st.column_config.NumberColumn(
-                            "KMs",
-                            format="%d km"
-                        ),
-                        "Data_Fatura": st.column_config.DateColumn(
-                            "Data",
-                            format="DD/MM/YYYY"
-                        ),
+                        "Valor_Visual": st.column_config.TextColumn("Valor (€)"),
+                        "KM_Atuais": st.column_config.NumberColumn("KMs", format="%d km"),
+                        "Data_Fatura": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
                         "Num_Fatura": st.column_config.TextColumn("Nº Fatura"),
                         "Descricao": st.column_config.TextColumn("Descrição")
                     }
