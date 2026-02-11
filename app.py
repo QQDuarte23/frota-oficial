@@ -17,7 +17,7 @@ LISTA_VIATURAS = [
     "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"
 ]
 
-# CSS: Esconde topos e rodapés, ajusta estilo do botão
+# CSS: Esconde topos e rodapés
 st.markdown("""
     <style>
     [data-testid="stToolbar"] {visibility: hidden !important;}
@@ -30,7 +30,6 @@ st.markdown("""
     .stButton>button:hover { background-color: #001540; color: white; }
     div.stImage > img { display: block; margin-left: auto; margin-right: auto; }
     
-    /* Ajuste do Menu Lateral */
     [data-testid="stSidebar"] { background-color: #F0F2F6; }
     </style>
     """, unsafe_allow_html=True)
@@ -159,24 +158,23 @@ if not st.session_state['logado']:
             if senha == "queijo123": st.session_state['logado'] = True; st.rerun()
             else: st.error("Senha errada!")
 else:
-    # --- BARRA LATERAL (NAVEGAÇÃO FIXA) ---
+    # --- BARRA LATERAL SÓ COM LOGO E SAIR ---
     with st.sidebar:
         mostrar_logo()
         st.write("---")
-        # O truque está aqui: st.radio mantém a seleção mesmo após o rerun
-        menu = st.radio("MENU", ["➕ Adicionar Fatura", "📊 Resumo Financeiro", "📅 Validades & Prazos"], label_visibility="collapsed")
-        st.write("---")
         if st.button("Sair"): st.session_state['logado'] = False; st.rerun()
 
-    # Mostra alertas no topo (sempre visível)
+    # Mostra alertas no topo
     df_alertas = carregar_validades()
     verificar_alertas(df_alertas)
 
     st.title("🚛 Gestão de Frota")
 
-    # --- PÁGINA 1: ADICIONAR ---
-    if menu == "➕ Adicionar Fatura":
-        st.subheader("Nova Despesa")
+    # --- VOLTAM AS ABAS (TABS) ---
+    tab1, tab2, tab3 = st.tabs(["➕ Adicionar", "📊 Resumo", "📅 Validades"])
+
+    # --- ABA 1: ADICIONAR ---
+    with tab1:
         with st.form("form_fatura", clear_on_submit=True):
             c1, c2 = st.columns(2)
             mat = c1.selectbox("Viatura", LISTA_VIATURAS)
@@ -191,12 +189,11 @@ else:
                 if val > 0 and nf:
                     if guardar_fatura([str(dt), mat, cat, val, km, nf, desc]):
                         st.success("✅ Fatura Gravada!")
-                        st.rerun() # Agora faz rerun mas mantém-se no menu "Adicionar"
+                        st.rerun()
                 else: st.warning("Preenche Valor e Nº Fatura")
 
-    # --- PÁGINA 2: RESUMO ---
-    elif menu == "📊 Resumo Financeiro":
-        st.subheader("Análise Financeira")
+    # --- ABA 2: RESUMO ---
+    with tab2:
         df = carregar_faturas()
         if not df.empty:
             def limpar_val(v):
@@ -234,15 +231,18 @@ else:
                              column_config={"Valor_V": "Valor (€)", "Data_Fatura": st.column_config.DateColumn("Data", format="DD/MM/YYYY")})
             else: st.warning("Sem dados.")
 
-    # --- PÁGINA 3: VALIDADES ---
-    elif menu == "📅 Validades & Prazos":
+    # --- ABA 3: VALIDADES ---
+    with tab3:
         st.subheader("Controlo de Prazos")
+        
+        # Seleção da Viatura (Fora do form para atualizar)
         v_selecionada = st.selectbox("🔎 Escolher Viatura para Editar:", LISTA_VIATURAS)
         d_seg_at, d_insp_at, d_iuc_at, obs_at = obter_dados_atuais(v_selecionada)
 
         with st.form("form_validade"):
             st.write(f"**A editar: {v_selecionada}**")
             c_d1, c_d2, c_d3 = st.columns(3)
+            # Preenche automático. Se quiser apagar, limpa o campo.
             d_seg = c_d1.date_input("Seguro", value=d_seg_at)
             d_insp = c_d2.date_input("Inspeção", value=d_insp_at)
             d_iuc = c_d3.date_input("IUC", value=d_iuc_at)
@@ -253,7 +253,7 @@ else:
                 dados_v = [v_selecionada, str(d_seg) if d_seg else "", str(d_insp) if d_insp else "", str(d_iuc) if d_iuc else "", obs]
                 if guardar_validade(dados_v):
                     st.success(f"✅ {v_selecionada} atualizada!")
-                    st.rerun() # Rerun atualiza a tabela abaixo MAS mantém-te nesta página!
+                    st.rerun()
                 else: st.error("Erro ao gravar.")
 
         st.divider()
