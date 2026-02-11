@@ -9,32 +9,27 @@ import plotly.express as px
 # --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# CSS CIRÚRGICO: Esconde ícones do topo SEM estragar o menu lateral
+# CSS INTELIGENTE: Esconde o topo, mas salva o botão do menu!
 st.markdown("""
     <style>
-    /* 1. Esconder a Barra de Ferramentas (Share, GitHub, Star, etc.) */
-    [data-testid="stToolbar"] {
-        visibility: hidden;
-        height: 0%;
-        position: fixed;
-    }
-    
-    /* 2. Esconder a decoração colorida no topo */
-    [data-testid="stDecoration"] {
+    /* 1. Esconde a Barra de Cabeçalho inteira (onde vivem os ícones chatos) */
+    header[data-testid="stHeader"] {
         visibility: hidden;
     }
 
-    /* 3. Esconder o Rodapé (Made with Streamlit) */
-    footer {
-        visibility: hidden;
+    /* 2. MAS... Traz de volta (Força) o botão de abrir/fechar menu */
+    [data-testid="stSidebarCollapsedControl"] {
+        visibility: visible !important;
+        display: block !important;
+        color: #002060 !important; /* Pinta a seta de Azul Qerqueijo para se ver bem */
     }
 
-    /* 4. Esconder o botão 'Manage App' */
-    .stAppDeployButton {
-        display: none;
-    }
+    /* 3. Esconde decoração e rodapés */
+    [data-testid="stDecoration"] {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stAppDeployButton {display:none;}
     
-    /* 5. Ajustes de Design da App */
+    /* 4. Design Geral */
     .stApp { background-color: white; }
     [data-testid="stSidebar"] { background-color: #F0F2F6; }
     h1, h2, h3 { color: #002060; }
@@ -93,12 +88,12 @@ def eliminar_registo(indice):
         except: return False
     return False
 
-# --- FUNÇÃO DO LOGO INTELIGENTE (Procura em todo o lado) ---
+# --- FUNÇÃO DO LOGO INTELIGENTE ---
 def mostrar_logo():
     caminhos_possiveis = [
-        ".streamlit/logo.png",      # Pasta oculta (o mais provável)
-        "logo.png",                 # Raiz
-        ".streamlit/Logo.png",      # Maiúsculas
+        ".streamlit/logo.png",
+        "logo.png",
+        ".streamlit/Logo.png",
         "Logo.png",
         ".streamlit/logo.jpg",
         "logo.jpg"
@@ -179,7 +174,6 @@ else:
                     return 0.0
 
             df['Valor'] = df['Valor'].apply(corrigir_valor)
-            # Cria a coluna visual com VÍRGULA (Formato PT)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
