@@ -17,13 +17,23 @@ LISTA_VIATURAS = [
     "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"
 ]
 
-# CSS Limpo
+# CSS: Esconde topos e rodapés, MAS MOSTRA A SETA (stSidebarCollapsedControl)
 st.markdown("""
     <style>
-    /* Esconde barra de topo e rodapé */
+    /* Esconde barra de ferramentas (canto superior direito) e rodapé */
     [data-testid="stToolbar"] {visibility: hidden !important;}
     footer {visibility: hidden;}
     .stAppDeployButton {display: none;}
+    
+    /* Cabeçalho transparente, mas permite clicar nos botões */
+    header[data-testid="stHeader"] {background: transparent !important;}
+    
+    /* A MÁGICA: Forçar a seta do menu lateral a ser visível e AZUL */
+    [data-testid="stSidebarCollapsedControl"] {
+        display: block !important;
+        color: #002060 !important;
+        font-weight: bold;
+    }
     
     /* Cores da Marca */
     .stApp { background-color: white; }
@@ -33,22 +43,12 @@ st.markdown("""
     .stButton>button:hover { background-color: #001540; color: white; }
     div.stImage > img { display: block; margin-left: auto; margin-right: auto; }
     
-    /* Ajuste visual do Menu Horizontal (Radio) para parecer Abas */
-    div[role="radiogroup"] > label > div:first-of-type {
-        display: none;
-    }
-    div[role="radiogroup"] {
-        flex-direction: row;
-        justify-content: center;
-        gap: 20px;
-    }
+    /* Ajuste visual do Menu Horizontal */
+    div[role="radiogroup"] > label > div:first-of-type { display: none; }
+    div[role="radiogroup"] { flex-direction: row; justify-content: center; gap: 20px; }
     
     /* Métrica de Alertas */
-    div[data-testid="metric-container"] {
-        background-color: #F0F2F6;
-        padding: 10px;
-        border-radius: 5px;
-    }
+    div[data-testid="metric-container"] { background-color: #F0F2F6; padding: 10px; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -118,7 +118,6 @@ def carregar_validades():
     return pd.DataFrame()
 
 def guardar_validade_nova(dados):
-    # dados = [Matricula, Seg, Insp, IUC, Obs]
     wb = conectar_gsheets()
     if wb:
         try:
@@ -190,10 +189,11 @@ if not st.session_state['logado']:
                 st.rerun()
             else: st.error("Senha errada!")
 else:
+    # --- BARRA LATERAL (PARA SAIR) ---
     with st.sidebar:
         mostrar_logo()
         st.write("---")
-        if st.button("Sair"): 
+        if st.button("Sair (Logout)"): 
             st.session_state['logado'] = False
             st.rerun()
 
@@ -202,8 +202,7 @@ else:
 
     st.title("🚛 Gestão de Frota")
 
-    # --- MENU DE NAVEGAÇÃO HORIZONTAL (SUBSTITUI AS ABAS) ---
-    # Isto garante que a página não muda sozinha quando gravas
+    # --- MENU DE NAVEGAÇÃO HORIZONTAL ---
     menu = st.radio("", ["➕ Adicionar Despesa", "📊 Resumo Financeiro", "📅 Validades & Alertas"], horizontal=True)
     st.divider()
 
