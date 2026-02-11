@@ -6,21 +6,17 @@ import json
 from datetime import datetime
 import plotly.express as px
 
-# --- CONFIGURAÇÃO VISUAL E REMOÇÃO DE ELEMENTOS DA PLATAFORMA ---
+# --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# CSS Mágico para esconder: Header, Footer e Botão Manage App
+# CSS Corrigido: Mostra o Header (Menu) mas esconde o 'Manage App' e Rodapé
 st.markdown("""
     <style>
-    /* Esconder o Header (ícones do canto superior) */
-    header {visibility: hidden;}
-    
     /* Esconder o Footer (Made with Streamlit) */
     footer {visibility: hidden;}
 
-    /* Esconder o botão 'Manage App' e outros elementos de ancoragem */
+    /* Esconder o botão 'Manage App' */
     .stAppDeployButton {display:none;}
-    #MainMenu {visibility: hidden;}
     
     /* Ajustes de Design Profissional */
     .stApp { background-color: white; }
@@ -50,7 +46,6 @@ def conectar_gsheets():
             return None
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
-        # Tenta abrir a folha. Ajusta se mudaste o nome.
         return client.open(NOME_FOLHA_GOOGLE).sheet1
     except: return None
 
@@ -84,8 +79,10 @@ def eliminar_registo(indice):
 
 def mostrar_logo():
     try:
+        # ATENÇÃO: Confirma se o nome do ficheiro no GitHub é exatamente "logo.png" (minúsculas)
         st.image("logo.png", use_container_width=True)
     except:
+        # Se falhar a imagem, mostra o texto
         st.header("QERQUEIJO 🧀")
 
 # --- INTERFACE DE LOGIN ---
@@ -104,7 +101,7 @@ if not st.session_state['logado']:
             else:
                 st.error("Senha errada!")
 else:
-    # Conteúdo principal da App após login
+    # --- BARRA LATERAL (MENU) ---
     with st.sidebar:
         mostrar_logo()
         st.write("---")
@@ -142,25 +139,16 @@ else:
             # --- CORREÇÃO INTELIGENTE DE VALORES ---
             def corrigir_valor(v):
                 try:
-                    # Remove símbolo de Euro e troca vírgula por ponto para cálculo
                     v_str = str(v).replace('€', '').replace(',', '.')
                     valor_float = float(v_str)
-                    
-                    # REGRA DE OURO: Se for maior que 2000, assume erro de vírgula e divide por 100
-                    # Exemplo: 8652 transforma-se em 86.52
                     if valor_float > 2000:
                         return valor_float / 100
                     return valor_float
                 except:
                     return 0.0
 
-            # Aplica a correção a toda a coluna de Valor
             df['Valor'] = df['Valor'].apply(corrigir_valor)
-            
-            # Cria coluna visual com VÍRGULA (Formato Português: 86,52 €)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-
-            # Trata as datas
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
             # --- ÁREA DE ELIMINAR ---
@@ -173,7 +161,6 @@ else:
                 if f_mat_del != "Todas": df_del = df_del[df_del["Matricula"] == f_mat_del]
                 if f_doc_del: df_del = df_del[df_del["Num_Fatura"].astype(str).str.contains(f_doc_del, case=False)]
                 if not df_del.empty:
-                    # Mostra a lista para eliminar
                     ops = [f"Linha {r.Idx} | {r.Data_Fatura.date()} | {r.Matricula} | {r.Valor:.2f}€" for _, r in df_del.iterrows()]
                     escolha = st.selectbox("Selecionar:", ops[::-1])
                     if st.button("❌ Confirmar"):
@@ -198,26 +185,20 @@ else:
             # --- GRÁFICOS ---
             if not df_f.empty:
                 col_g1, col_g2 = st.columns(2)
-                
-                # Gráfico Linha
                 df_ev = df_f.groupby(df_f['Data_Fatura'].dt.to_period('M'))['Valor'].sum().reset_index()
                 df_ev['Data_Fatura'] = df_ev['Data_Fatura'].astype(str)
                 fig_line = px.line(df_ev, x='Data_Fatura', y='Valor', title="Evolução Mensal (€)", markers=True)
                 fig_line.update_traces(line_color='#002060')
                 col_g1.plotly_chart(fig_line, use_container_width=True)
                 
-                # Gráfico Pizza
                 fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição por Categoria", hole=0.4)
                 col_g2.plotly_chart(fig_pie, use_container_width=True)
 
-                # --- TABELA FINAL CORRIGIDA ---
                 st.subheader("📋 Detalhe das Faturas")
-                
                 st.dataframe(
                     df_f,
                     use_container_width=True,
                     hide_index=True,
-                    # Aqui definimos a ordem e usamos a coluna "Valor_Visual" em vez da "Valor" original
                     column_order=["Data_Fatura", "Matricula", "Categoria", "Valor_Visual", "KM_Atuais", "Num_Fatura", "Descricao"],
                     column_config={
                         "Matricula": st.column_config.TextColumn("Viatura"),
