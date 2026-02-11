@@ -9,38 +9,37 @@ import plotly.express as px
 # --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# --- CSS FINAL (TESTADO PARA MOSTRAR O BOTÃO DE MENU) ---
+# --- CSS NUCLEAR: FORÇA BRUTA NO BOTÃO DO MENU ---
 st.markdown("""
     <style>
-    /* 1. Esconde a Barra de Ferramentas da Direita (Share, GitHub, etc.) */
-    [data-testid="stToolbar"] {
-        visibility: hidden !important;
-        height: 0px !important;
-    }
-
-    /* 2. Esconde a Decoração Colorida no topo */
-    [data-testid="stDecoration"] {
-        display: none !important;
-    }
-
-    /* 3. O Cabeçalho fica Transparente (não invisível) para permitir clicar no botão */
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-    }
-
-    /* 4. REFORÇO: O Botão de Menu tem de estar VISÍVEL, AZUL e ACIMA de tudo */
-    [data-testid="stSidebarCollapsedControl"] {
-        visibility: visible !important;
-        display: block !important;
-        color: #002060 !important; /* Azul Qerqueijo */
-        z-index: 999999 !important; /* Prioridade máxima */
-    }
+    /* 1. Esconder TUDO o que é barra de topo e ferramentas */
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+    header[data-testid="stHeader"] {background-color: transparent !important;}
     
-    /* 5. Limpeza Geral */
+    /* 2. Esconder Rodapé e Manage App */
     footer {display: none !important;}
     .stAppDeployButton {display: none !important;}
-    
-    /* 6. Cores da App */
+
+    /* 3. A SOLUÇÃO NUCLEAR PARA O BOTÃO DO MENU */
+    /* Isto arranca o botão do sítio normal e cola-o no canto do ecrã */
+    [data-testid="stSidebarCollapsedControl"] {
+        position: fixed !important;    /* Fica fixo no ecrã */
+        top: 15px !important;          /* 15px do topo */
+        left: 15px !important;         /* 15px da esquerda */
+        z-index: 1000001 !important;   /* Fica por cima de TUDO */
+        display: block !important;
+        visibility: visible !important;
+        color: #002060 !important;     /* Cor Azul */
+        background-color: rgba(255,255,255,0.8) !important; /* Fundo branquinho para se ver bem */
+        border-radius: 50% !important; /* Redondo */
+        width: 40px !important;
+        height: 40px !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    /* 4. Ajustes gerais */
     .stApp { background-color: white; }
     [data-testid="stSidebar"] { background-color: #F0F2F6; }
     h1, h2, h3 { color: #002060; }
@@ -185,7 +184,6 @@ else:
                     return 0.0
 
             df['Valor'] = df['Valor'].apply(corrigir_valor)
-            # Formatação Visual com Vírgula
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
