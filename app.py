@@ -237,4 +237,10 @@ else:
                         "Categoria": st.column_config.TextColumn("Categoria"),
                         "Valor_Visual": st.column_config.TextColumn("Valor (€)"),
                         "KM_Atuais": st.column_config.NumberColumn("KMs", format="%d km"),
-                        "Data
+                        "Data_Fatura": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
+                        "Num_Fatura": st.column_config.TextColumn("Nº Fatura"),
+                        "Descricao": st.column_config.TextColumn("Descrição")
+                    }
+                )
+            else:
+                st.warning("Sem dados para os filtros selecionados.")
