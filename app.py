@@ -9,27 +9,42 @@ import plotly.express as px
 # --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# CSS INTELIGENTE: Esconde o topo, mas salva o botão do menu!
+# --- CSS CORRIGIDO: ESCONDE ÍCONES MAS MANTÉM O BOTÃO DE MENU ---
 st.markdown("""
     <style>
-    /* 1. Esconde a Barra de Cabeçalho inteira (onde vivem os ícones chatos) */
-    header[data-testid="stHeader"] {
-        visibility: hidden;
+    /* 1. Esconder a Barra de Ferramentas da Direita (Share, GitHub, etc.) */
+    [data-testid="stToolbar"] {
+        visibility: hidden !important;
+        display: none !important;
     }
 
-    /* 2. MAS... Traz de volta (Força) o botão de abrir/fechar menu */
+    /* 2. Esconder a Decoração Colorida no topo */
+    [data-testid="stDecoration"] {
+        display: none !important;
+    }
+
+    /* 3. Tornar o Cabeçalho Transparente (para não tapar o conteúdo, mas deixar o botão existir) */
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+    }
+
+    /* 4. FORÇAR o Botão de Abrir Menu a ser VISÍVEL e AZUL */
     [data-testid="stSidebarCollapsedControl"] {
         visibility: visible !important;
         display: block !important;
-        color: #002060 !important; /* Pinta a seta de Azul Qerqueijo para se ver bem */
+        color: #002060 !important; /* Azul Qerqueijo */
+    }
+    
+    /* Se o botão estiver dentro de um container escondido, isto força-o a sair */
+    section[data-testid="stSidebar"] > div {
+        height: 100%;
     }
 
-    /* 3. Esconde decoração e rodapés */
-    [data-testid="stDecoration"] {visibility: hidden;}
+    /* 5. Limpeza Geral (Rodapé e Botão Manage) */
     footer {visibility: hidden;}
     .stAppDeployButton {display:none;}
     
-    /* 4. Design Geral */
+    /* 6. Cores da App */
     .stApp { background-color: white; }
     [data-testid="stSidebar"] { background-color: #F0F2F6; }
     h1, h2, h3 { color: #002060; }
@@ -174,6 +189,7 @@ else:
                     return 0.0
 
             df['Valor'] = df['Valor'].apply(corrigir_valor)
+            # Cria a coluna visual com VÍRGULA (Formato PT)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
