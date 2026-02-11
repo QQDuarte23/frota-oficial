@@ -9,16 +9,11 @@ import plotly.express as px
 # --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# CSS Corrigido: Mostra o Header (Menu) mas esconde o 'Manage App' e Rodapé
+# CSS: Mantém o visual limpo, esconde rodapé e botão 'Manage app'
 st.markdown("""
     <style>
-    /* Esconder o Footer (Made with Streamlit) */
     footer {visibility: hidden;}
-
-    /* Esconder o botão 'Manage App' */
     .stAppDeployButton {display:none;}
-    
-    /* Ajustes de Design Profissional */
     .stApp { background-color: white; }
     [data-testid="stSidebar"] { background-color: #F0F2F6; }
     h1, h2, h3 { color: #002060; }
@@ -77,12 +72,28 @@ def eliminar_registo(indice):
         except: return False
     return False
 
+# --- FUNÇÃO DO LOGO (AGORA PROCURA DENTRO DA PASTA .streamlit) ---
 def mostrar_logo():
-    try:
-        # ATENÇÃO: Confirma se o nome do ficheiro no GitHub é exatamente "logo.png" (minúsculas)
-        st.image("logo.png", use_container_width=True)
-    except:
-        # Se falhar a imagem, mostra o texto
+    # Lista alargada de locais onde o logo pode estar
+    caminhos_possiveis = [
+        ".streamlit/logo.png",      # O mais provável (baseado na tua imagem)
+        "logo.png",                 # Na raiz
+        ".streamlit/Logo.png",      # Pasta com maiúscula
+        "Logo.png",                 # Raiz com maiúscula
+        ".streamlit/logo.jpg",      # Pasta jpg
+        "logo.jpg"                  # Raiz jpg
+    ]
+    
+    encontrou = False
+    for caminho in caminhos_possiveis:
+        try:
+            st.image(caminho, use_container_width=True)
+            encontrou = True
+            break 
+        except:
+            continue
+            
+    if not encontrou:
         st.header("QERQUEIJO 🧀")
 
 # --- INTERFACE DE LOGIN ---
