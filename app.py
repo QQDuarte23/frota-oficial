@@ -9,11 +9,32 @@ import plotly.express as px
 # --- CONFIGURAÇÃO VISUAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# CSS: Mantém o visual limpo, esconde rodapé e botão 'Manage app'
+# CSS CIRÚRGICO: Esconde ícones do topo SEM estragar o menu lateral
 st.markdown("""
     <style>
-    footer {visibility: hidden;}
-    .stAppDeployButton {display:none;}
+    /* 1. Esconder a Barra de Ferramentas (Share, GitHub, Star, etc.) */
+    [data-testid="stToolbar"] {
+        visibility: hidden;
+        height: 0%;
+        position: fixed;
+    }
+    
+    /* 2. Esconder a decoração colorida no topo */
+    [data-testid="stDecoration"] {
+        visibility: hidden;
+    }
+
+    /* 3. Esconder o Rodapé (Made with Streamlit) */
+    footer {
+        visibility: hidden;
+    }
+
+    /* 4. Esconder o botão 'Manage App' */
+    .stAppDeployButton {
+        display: none;
+    }
+    
+    /* 5. Ajustes de Design da App */
     .stApp { background-color: white; }
     [data-testid="stSidebar"] { background-color: #F0F2F6; }
     h1, h2, h3 { color: #002060; }
@@ -72,16 +93,15 @@ def eliminar_registo(indice):
         except: return False
     return False
 
-# --- FUNÇÃO DO LOGO (AGORA PROCURA DENTRO DA PASTA .streamlit) ---
+# --- FUNÇÃO DO LOGO INTELIGENTE (Procura em todo o lado) ---
 def mostrar_logo():
-    # Lista alargada de locais onde o logo pode estar
     caminhos_possiveis = [
-        ".streamlit/logo.png",      # O mais provável (baseado na tua imagem)
-        "logo.png",                 # Na raiz
-        ".streamlit/Logo.png",      # Pasta com maiúscula
-        "Logo.png",                 # Raiz com maiúscula
-        ".streamlit/logo.jpg",      # Pasta jpg
-        "logo.jpg"                  # Raiz jpg
+        ".streamlit/logo.png",      # Pasta oculta (o mais provável)
+        "logo.png",                 # Raiz
+        ".streamlit/Logo.png",      # Maiúsculas
+        "Logo.png",
+        ".streamlit/logo.jpg",
+        "logo.jpg"
     ]
     
     encontrou = False
@@ -159,6 +179,7 @@ else:
                     return 0.0
 
             df['Valor'] = df['Valor'].apply(corrigir_valor)
+            # Cria a coluna visual com VÍRGULA (Formato PT)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
@@ -216,10 +237,4 @@ else:
                         "Categoria": st.column_config.TextColumn("Categoria"),
                         "Valor_Visual": st.column_config.TextColumn("Valor (€)"),
                         "KM_Atuais": st.column_config.NumberColumn("KMs", format="%d km"),
-                        "Data_Fatura": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-                        "Num_Fatura": st.column_config.TextColumn("Nº Fatura"),
-                        "Descricao": st.column_config.TextColumn("Descrição")
-                    }
-                )
-            else:
-                st.warning("Sem dados para os filtros selecionados.")
+                        "Data
