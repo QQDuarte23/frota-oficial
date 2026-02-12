@@ -56,15 +56,14 @@ def conectar_gsheets():
         return gspread.authorize(creds).open(NOME_FOLHA_GOOGLE)
     except: return None
 
-# --- 3. DADOS ---
+# --- 3. DADOS (VOLTÁMOS À VERSÃO SIMPLES QUE FUNCIONA) ---
 def carregar_dados():
     wb = conectar_gsheets()
     if wb:
         try:
-            df = pd.DataFrame(wb.sheet1.get_all_records())
-            # Se vier vazio ou sem colunas, retorna estrutura padrão
-            if df.empty or len(df.columns) < 2: 
-                return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
+            # Lê tudo exatamente como está no Excel
+            sheet = wb.sheet1 
+            df = pd.DataFrame(sheet.get_all_records())
             return df
         except: return pd.DataFrame()
     return pd.DataFrame()
@@ -186,25 +185,33 @@ else:
     # --- ABA 2: RESUMO ---
     elif menu == "📊 Resumo Financeiro":
         df = carregar_dados()
-        if not df.empty and len(df) > 0:
-            # CORREÇÃO DE VALORES E DATAS
+        if not df.empty:
+            # --- CORREÇÃO DO ERRO 731€ ---
             def corrigir_valor(v):
                 try:
+                    # Tira símbolo e espaços
                     v_str = str(v).replace('€', '').strip()
-                    if ',' in v_str: v_str = v_str.replace('.', '').replace(',', '.')
+                    
+                    # Se tiver vírgula, troca por ponto (formato universal)
+                    if ',' in v_str:
+                        v_str = v_str.replace('.', '').replace(',', '.')
+                    
+                    # IMPORTANTE: Se já tiver ponto (ex: 73.10), NÃO faz nada e converte direto
                     valor = float(v_str)
-                    if valor > 2000: return valor / 100 # Corrige erro de virgula
+                    
+                    # Só divide por 100 se for um valor absurdo (ex: > 2000)
+                    if valor > 2000: return valor / 100
+                    
                     return valor
                 except: return 0.0
 
             df['Valor'] = df['Valor'].apply(corrigir_valor)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             
-            # Converte data com tratamento de erro
-            df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'], errors='coerce')
-            df = df.dropna(subset=['Data_Fatura']) # Remove linhas com datas inválidas para não partir o gráfico
-
-            # Filtros
+            # Converte Data (dayfirst=True para formato PT)
+            df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'], dayfirst=True, errors='coerce')
+            
+            # --- Filtros ---
             with st.expander("🗑️ Eliminar Fatura"):
                 c1, c2 = st.columns(2)
                 l_mat = ["Todas"] + list(df["Matricula"].unique())
@@ -235,20 +242,24 @@ else:
             if not df_f.empty:
                 c_g1, c_g2 = st.columns(2)
                 
-                # Gráfico Linha (Evolução)
+                # GRÁFICO 1: EVOLUÇÃO (Barras Empilhadas)
                 try:
-                    df_ev = df_f.groupby(df_f['Data_Fatura'].dt.to_period('M').astype(str))['Valor'].sum().reset_index()
-                    df_ev.columns = ['Mês', 'Valor']
-                    fig_line = px.line(df_ev, x='Mês', y='Valor', title="Evolução Mensal (€)", markers=True)
-                    fig_line.update_traces(line_color='#002060')
-                    c_g1.plotly_chart(fig_line, use_container_width=True)
-                except: c_g1.error("Erro ao gerar gráfico de evolução.")
+                    df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
+                    df_ev.columns = ['Mês', 'Categoria', 'Valor']
+                    c_g1.plotly_chart(px.bar(df_ev, x='Mês', y='Valor', color='Categoria', title="Evolução Mensal", text_auto='.2s'), use_container_width=True)
+                except: pass
                 
-                # Gráfico Tarte
+                # GRÁFICO 2: TARTE
                 try:
-                    fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Custos por Categoria", hole=0.4)
-                    c_g2.plotly_chart(fig_pie, use_container_width=True)
-                except: c_g2.error("Erro ao gerar gráfico de categorias.")
+                    c_g2.plotly_chart(px.pie(df_f, values='Valor', names='Categoria', title="Custos por Categoria", hole=0.4), use_container_width=True)
+                except: pass
+
+                # GRÁFICO 3: RANKING
+                st.write("")
+                try:
+                    df_rank = df_f.groupby('Matricula')['Valor'].sum().reset_index().sort_values('Valor', ascending=False)
+                    st.plotly_chart(px.bar(df_rank, x='Matricula', y='Valor', title="🏆 Ranking de Despesas", text_auto='.2s', color='Valor', color_continuous_scale='Blues'), use_container_width=True)
+                except: pass
 
                 st.subheader("📋 Detalhe das Faturas")
                 st.dataframe(df_f, use_container_width=True, hide_index=True,
