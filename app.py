@@ -212,7 +212,8 @@ else:
             c1, c2 = st.columns(2)
             with c1:
                 mat = st.selectbox("Viatura", LISTA_VIATURAS)
-                cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens"])
+                # AQUI ESTÁ A ALTERAÇÃO: Adicionadas as novas categorias
+                cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"])
             with c2:
                 dt = st.date_input("Data Fatura", datetime.now())
                 nf = st.text_input("Nº Fatura")
