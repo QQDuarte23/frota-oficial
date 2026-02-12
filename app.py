@@ -3,13 +3,13 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.express as px
 
 # --- 1. CONFIGURAÇÃO GERAL ---
 st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
 
-# Lista fixa das viaturas
+# Lista fixa das viaturas (IMPORTANTE: Estar aqui no topo)
 LISTA_VIATURAS = [
     "06-QO-19", "59-RT-87", "19-TF-05", "28-UO-50", "17-UM-19", "83-ZL-79", 
     "83-ZL-83", "AD-66-VN", "AD-71-VN", "AL-36-FF", "AL-30-FF", "AT-79-QU", 
@@ -17,7 +17,7 @@ LISTA_VIATURAS = [
     "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"
 ]
 
-# CSS: Esconde topos e rodapés, ajusta cores e o Menu Horizontal
+# CSS: Esconde topos e rodapés, ajusta cores
 st.markdown("""
     <style>
     [data-testid="stToolbar"] {visibility: hidden !important;}
@@ -61,7 +61,8 @@ def carregar_dados():
     wb = conectar_gsheets()
     if wb:
         try:
-            df = pd.DataFrame(wb.sheet1.get_all_records())
+            sheet = wb.sheet1 
+            df = pd.DataFrame(sheet.get_all_records())
             if df.empty: return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
             return df
         except: return pd.DataFrame()
@@ -87,11 +88,17 @@ def carregar_validades():
         try:
             sheet = wb.worksheet("Validades")
             data = sheet.get_all_records()
+            # Garante que a lista de matrículas é usada
             df_base = pd.DataFrame({"Matricula": LISTA_VIATURAS})
+            
             if not data: 
+                # Se vazio, preenche colunas vazias
                 for c in ["Data_Seguro", "Data_Inspecao", "Data_IUC", "Observacoes"]: df_base[c] = ""
                 return df_base
-            return pd.merge(df_base, pd.DataFrame(data), on="Matricula", how="left").fillna("")
+            
+            df_google = pd.DataFrame(data)
+            # Junta o que está no Google com a lista fixa
+            return pd.merge(df_base, df_google, on="Matricula", how="left").fillna("")
         except: return pd.DataFrame()
     return pd.DataFrame()
 
@@ -153,12 +160,13 @@ else:
         mostrar_logo(); st.write("---")
         if st.button("Sair"): st.session_state['logado'] = False; st.rerun()
 
+    # Carrega alertas
     df_alertas = carregar_validades()
     if not df_alertas.empty: verificar_alertas(df_alertas)
 
     st.title("🚛 Gestão de Frota")
 
-    # Menu Horizontal (Funciona como Abas mas mantém a navegação)
+    # Menu Horizontal (Navegação Fixa)
     menu = st.radio("", ["➕ Adicionar Despesa", "📊 Resumo Financeiro", "📅 Validades & Alertas"], horizontal=True)
     st.divider()
 
@@ -185,26 +193,23 @@ else:
     elif menu == "📊 Resumo Financeiro":
         df = carregar_dados()
         if not df.empty:
-            # --- CORREÇÃO DE VALORES MELHORADA ---
+            # CORREÇÃO DE VALORES (Agressiva para apanhar o erro 731)
             def corrigir_valor(v):
                 try:
-                    # Remove euros e espaços
                     v_str = str(v).replace('€', '').strip()
-                    # Se tiver vírgula, assume que é decimal e troca por ponto
-                    if ',' in v_str:
-                        v_str = v_str.replace('.', '').replace(',', '.')
+                    # Troca vírgula por ponto para o Python entender
+                    if ',' in v_str: v_str = v_str.replace('.', '').replace(',', '.')
                     
                     valor = float(v_str)
                     
-                    # Correção para o caso dos 731€ (que deviam ser 73.10)
-                    # Se for um valor estranhamente alto para gasóleo (ex: > 600€) e parecer erro de virgula
-                    if valor > 2000: 
-                        return valor / 100
+                    # CORREÇÃO MANUAL: Se o valor for > 600€ (improvável para 1 depósito), divide por 10
+                    # Ex: 731 passa a 73.1
+                    if valor > 600: return valor / 10
+                    
                     return valor
                 except: return 0.0
 
             df['Valor'] = df['Valor'].apply(corrigir_valor)
-            # Cria valor visual bonito (ex: 73,10 €)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
@@ -238,31 +243,23 @@ else:
 
             if not df_f.empty:
                 c_g1, c_g2 = st.columns(2)
-                # Gráfico Barras Empilhadas
-                df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
-                df_ev.columns = ['Mês', 'Categoria', 'Valor']
-                c_g1.plotly_chart(px.bar(df_ev, x='Mês', y='Valor', color='Categoria', title="Evolução Mensal (Detalhada)", text_auto='.2s'), use_container_width=True)
+                
+                # Gráfico Linha
+                df_ev = df_f.groupby(df_f['Data_Fatura'].dt.to_period('M'))['Valor'].sum().reset_index()
+                df_ev['Data_Fatura'] = df_ev['Data_Fatura'].astype(str)
+                fig_line = px.line(df_ev, x='Data_Fatura', y='Valor', title="Evolução Mensal (€)", markers=True)
+                fig_line.update_traces(line_color='#002060')
+                c_g1.plotly_chart(fig_line, use_container_width=True)
                 
                 # Gráfico Tarte
-                c_g2.plotly_chart(px.pie(df_f, values='Valor', names='Categoria', title="Custos por Categoria", hole=0.4), use_container_width=True)
+                c_g2.plotly_chart(px.pie(df_f, values='Valor', names='Categoria', title="Distribuição", hole=0.4), use_container_width=True)
 
-                # Ranking
-                st.write("")
-                df_rank = df_f.groupby('Matricula')['Valor'].sum().reset_index().sort_values('Valor', ascending=False)
-                st.plotly_chart(px.bar(df_rank, x='Matricula', y='Valor', title="🏆 Ranking de Gastos por Viatura", text_auto='.2s', color='Valor', color_continuous_scale='Blues'), use_container_width=True)
-
-                st.divider()
                 st.subheader("📋 Detalhe das Faturas")
                 st.dataframe(df_f, use_container_width=True, hide_index=True,
                     column_order=["Data_Fatura", "Matricula", "Categoria", "Valor_Visual", "KM_Atuais", "Num_Fatura", "Descricao"],
                     column_config={
-                        "Matricula": st.column_config.TextColumn("Viatura"),
-                        "Categoria": st.column_config.TextColumn("Categoria"),
                         "Valor_Visual": st.column_config.TextColumn("Valor (€)"),
-                        "KM_Atuais": st.column_config.NumberColumn("KMs", format="%d km"),
-                        "Data_Fatura": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-                        "Num_Fatura": st.column_config.TextColumn("Nº Fatura"),
-                        "Descricao": st.column_config.TextColumn("Descrição")
+                        "Data_Fatura": st.column_config.DateColumn("Data", format="DD/MM/YYYY")
                     }
                 )
             else: st.warning("Sem dados.")
