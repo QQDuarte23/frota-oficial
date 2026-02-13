@@ -206,29 +206,68 @@ else:
     menu = st.radio("", ["➕ Adicionar Despesa", "📊 Resumo Financeiro", "📅 Validades & Alertas"], horizontal=True)
     st.divider()
 
-    # --- CONTEÚDO 1: ADICIONAR ---
+    # --- CONTEÚDO 1: ADICIONAR (ALTERADO CIRURGICAMENTE) ---
     if menu == "➕ Adicionar Despesa":
-        with st.form("nova_despesa", clear_on_submit=True):
-            c1, c2 = st.columns(2)
-            with c1:
+        # Retirado o st.form para permitir dinamismo
+        
+        # 1. Escolher Categoria Primeiro
+        cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"])
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            # 2. Se for Lavagem, permite múltiplas viaturas. Se não, apenas uma.
+            if cat == "Lavagem":
+                mat = st.multiselect("Viaturas (Podes escolher várias)", LISTA_VIATURAS)
+            else:
                 mat = st.selectbox("Viatura", LISTA_VIATURAS)
-                # AQUI ESTÁ A ALTERAÇÃO: Adicionadas as novas categorias
-                cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"])
-            with c2:
-                dt = st.date_input("Data Fatura", datetime.now())
-                nf = st.text_input("Nº Fatura")
-            k1, k2, k3 = st.columns(3)
-            km = k1.number_input("KMs", step=1)
-            val = k2.number_input("Valor (€)", min_value=0.0, step=0.01)
-            desc = k3.text_input("Descrição")
-            if st.form_submit_button("💾 Gravar", type="primary", use_container_width=True):
+        with c2:
+            dt = st.date_input("Data Fatura", datetime.now())
+            nf = st.text_input("Nº Fatura")
+            
+        k1, k2, k3 = st.columns(3)
+        with k1:
+            km = st.number_input("KMs", step=1)
+        with k2:
+            # 3. Se for Lavagem, valor é 18.50€. Se não, o utilizador preenche.
+            if cat == "Lavagem":
+                val = st.number_input("Valor (€)", value=18.50, step=0.01)
+            else:
+                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+        with k3:
+            desc = st.text_input("Descrição")
+            
+        st.write("") # Espaço antes do botão
+        
+        # 4. Lógica de Gravação
+        if st.button("💾 Gravar", type="primary", use_container_width=True):
+            if cat == "Lavagem":
+                # Verificações da Lavagem (Nº Fatura não é obrigatório)
+                if not mat:
+                    st.warning("⚠️ Escolhe pelo menos uma viatura.")
+                elif val <= 0:
+                    st.warning("⚠️ O valor tem de ser maior que 0.")
+                else:
+                    sucesso = True
+                    # Grava no Excel as linhas todas (uma por cada viatura)
+                    for viatura in mat:
+                        if not guardar_registo([str(dt), viatura, cat, val, km, nf, desc]):
+                            sucesso = False
+                    
+                    if sucesso:
+                        st.success(f"✅ {len(mat)} lavagens registadas com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("Ocorreu um erro a gravar no Excel.")
+            else:
+                # Verificações Normais (Combustivel, Oficina, etc)
                 if val > 0 and nf:
                     if guardar_registo([str(dt), mat, cat, val, km, nf, desc]):
                         st.success("✅ Fatura registada!")
                         st.rerun()
-                else: st.warning("Preenche Valor e Nº Fatura")
+                else: 
+                    st.warning("⚠️ Preenche Valor e Nº Fatura")
 
-    # --- CONTEÚDO 2: RESUMO ---
+    # --- CONTEÚDO 2: RESUMO (INTOCÁVEL) ---
     elif menu == "📊 Resumo Financeiro":
         df = carregar_dados()
         if not df.empty:
@@ -244,7 +283,7 @@ else:
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
-            # Área de Eliminar (Mantida)
+            # Área de Eliminar
             with st.expander("🗑️ Eliminar Fatura"):
                 col_d1, col_d2 = st.columns(2)
                 l_mat_del = ["Todas"] + list(df["Matricula"].unique())
@@ -262,7 +301,7 @@ else:
 
             st.divider()
             
-            # Filtros (Mantidos)
+            # Filtros
             with st.expander("🔍 Configurar Filtros", expanded=True):
                 c_f1, c_f2, c_f3 = st.columns(3)
                 f_mats = c_f1.multiselect("Viaturas:", sorted(df["Matricula"].unique()))
@@ -277,9 +316,9 @@ else:
             if not df_f.empty:
                 col_g1, col_g2 = st.columns(2)
                 
-                # --- GRÁFICO 1: EVOLUÇÃO EMPILHADA (Substitui o de linha) ---
+                # GRÁFICO 1: EVOLUÇÃO EMPILHADA
                 df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
-                df_ev.columns = ['Mês', 'Categoria', 'Valor'] # Renomear para o gráfico entender
+                df_ev.columns = ['Mês', 'Categoria', 'Valor'] 
                 
                 fig_bar_stack = px.bar(
                     df_ev, 
@@ -291,12 +330,12 @@ else:
                 )
                 col_g1.plotly_chart(fig_bar_stack, use_container_width=True)
                 
-                # --- GRÁFICO 2: PIE CHART (Mantido) ---
+                # GRÁFICO 2: PIE CHART
                 fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição de Custos", hole=0.4)
                 col_g2.plotly_chart(fig_pie, use_container_width=True)
 
-                # --- GRÁFICO 3: RANKING DE GASTADORES (Novo, no fundo) ---
-                st.write("") # Espaço
+                # GRÁFICO 3: RANKING DE GASTADORES
+                st.write("")
                 df_ranking = df_f.groupby('Matricula')['Valor'].sum().reset_index().sort_values('Valor', ascending=False)
                 fig_ranking = px.bar(
                     df_ranking, 
@@ -326,7 +365,7 @@ else:
                 )
             else: st.warning("Sem dados.")
 
-    # --- CONTEÚDO 3: VALIDADES ---
+    # --- CONTEÚDO 3: VALIDADES (INTOCÁVEL) ---
     elif menu == "📅 Validades & Alertas":
         st.subheader("Controlo de Prazos")
         st.info("ℹ️ Para **APAGAR** uma data, limpa o campo (deixa vazio) e clica em Atualizar.")
