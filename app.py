@@ -180,8 +180,9 @@ else:
         st.write("") 
         
         if st.button("💾 Gravar", type="primary", use_container_width=True):
-            # Guardamos o valor exatamente como é (limpo de truques)
-            val_limpo = float(val)
+            # AQUI ESTÁ A PROTEÇÃO: Força a gravação como STRING (texto) com vírgula!
+            # O Excel em Português lê isto perfeitamente como número.
+            val_para_gravar = f"{val:.2f}".replace('.', ',')
 
             if cat == "Lavagem":
                 if not mat: st.warning("⚠️ Escolhe pelo menos uma viatura.")
@@ -189,14 +190,14 @@ else:
                 else:
                     sucesso = True
                     for viatura in mat:
-                        if not guardar_registo([str(dt), viatura, cat, val_limpo, km, nf, desc]): sucesso = False
+                        if not guardar_registo([str(dt), viatura, cat, val_para_gravar, km, nf, desc]): sucesso = False
                     if sucesso:
                         st.success(f"✅ {len(mat)} lavagens registadas com sucesso!")
                         st.rerun()
                     else: st.error("Erro a gravar.")
             else:
                 if val > 0 and nf:
-                    if guardar_registo([str(dt), mat, cat, val_limpo, km, nf, desc]):
+                    if guardar_registo([str(dt), mat, cat, val_para_gravar, km, nf, desc]):
                         st.success("✅ Fatura registada!")
                         st.rerun()
                 else: st.warning("⚠️ Preenche Valor e Nº Fatura")
@@ -206,21 +207,42 @@ else:
         df = carregar_dados()
         if not df.empty:
             
-            # Função de limpeza 100% segura (não adivinha, apenas garante que fica número)
-            def limpar_valor_seguro(v):
+            # --- FUNÇÃO DETETIVE ULTIMATE (Lê os novos e corrige os velhos) ---
+            def limpar_valor_seguro(row):
+                v = row.get('Valor', 0)
+                cat = row.get('Categoria', '')
                 try:
                     if pd.isna(v) or v == "": return 0.0
-                    if isinstance(v, (int, float)): return float(v)
-                    v_str = str(v).replace('€', '').strip().replace(' ', '')
-                    if '.' in v_str and ',' in v_str: v_str = v_str.replace('.', '').replace(',', '.')
-                    elif ',' in v_str: v_str = v_str.replace(',', '.')
-                    return float(v_str)
+                    
+                    # 1. Se for o FORMATO NOVO (Blindado, gravado como texto com vírgula)
+                    if isinstance(v, str):
+                        v_str = v.replace('€', '').strip().replace(' ', '')
+                        if '.' in v_str and ',' in v_str:
+                            v_str = v_str.replace('.', '').replace(',', '.')
+                        elif ',' in v_str:
+                            v_str = v_str.replace(',', '.')
+                        return float(v_str)
+                        
+                    # 2. Se for o FORMATO ANTIGO (Bug do Excel, gravado como número inteiro gigante)
+                    valor = float(v)
+                    
+                    if cat == "Lavagem":
+                        if valor > 50: return valor / 10 # Transforma 185 em 18.50
+                        
+                    elif cat in ["Combustível", "Frio", "Oficina", "Pneus", "Portagens", "Seguro", "Inspeção", "IUC"]:
+                        if valor >= 2000:       # Ex: 8706 transforma-se em 87.06
+                            return valor / 100
+                        elif valor > 300:       # Ex: 1084 transforma-se em 108.40 / 731 passa a 73.10
+                            return valor / 10
+                            
+                    return valor
                 except: return 0.0
 
-            df['Valor'] = df['Valor'].apply(limpar_valor_seguro)
+            # Aplica a limpeza linha a linha
+            df['Valor'] = df.apply(limpar_valor_seguro, axis=1)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'], errors='coerce')
-            df = df.dropna(subset=['Data_Fatura']) # Ignora linhas sem data válida
+            df = df.dropna(subset=['Data_Fatura']) 
 
             # Filtros Globais (Ano e Mês para o Patrão)
             with st.expander("🔍 Configurar Filtros (Data, Viatura, etc)", expanded=True):
@@ -231,7 +253,6 @@ else:
                 lista_anos = ["Todos"] + sorted(list(df['Ano'].unique()), reverse=True)
                 f_ano = c_ano.selectbox("Ano:", lista_anos)
                 
-                # Mapeamento de meses
                 meses_dict = {1:"Jan", 2:"Fev", 3:"Mar", 4:"Abr", 5:"Mai", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Set", 10:"Out", 11:"Nov", 12:"Dez"}
                 df['Nome_Mês'] = df['Mês'].map(meses_dict)
                 
@@ -251,104 +272,12 @@ else:
                 
                 # --- TABELA DO PATRÃO (PIVOT TABLE) ---
                 st.subheader("📊 Resumo por Viatura e Mês")
-                
-                # Cria a tabela cruzada
                 pivot = pd.pivot_table(df_f, values='Valor', index='Matricula', columns='Nome_Mês', aggfunc='sum', fill_value=0)
-                
-                # Ordena as colunas pelos meses corretamente
                 meses_ordem = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
                 cols = [m for m in meses_ordem if m in pivot.columns]
                 pivot = pivot[cols]
                 
-                # Coluna de Total e Ordenação
                 pivot['Total Gasto'] = pivot.sum(axis=1)
                 pivot = pivot.sort_values('Total Gasto', ascending=False)
-                
-                # Formata os valores para Euros
                 for col in pivot.columns:
-                    pivot[col] = pivot[col].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-                    
-                st.dataframe(pivot, use_container_width=True)
-
-                st.write("---")
-                
-                # --- GRÁFICOS ---
-                col_g1, col_g2 = st.columns(2)
-                
-                df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
-                df_ev.columns = ['Mês', 'Categoria', 'Valor'] 
-                
-                fig_bar_stack = px.bar(df_ev, x='Mês', y='Valor', color='Categoria', title="Evolução Mensal (Por Categoria)", text_auto='.2s')
-                col_g1.plotly_chart(fig_bar_stack, use_container_width=True)
-                
-                fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição de Custos", hole=0.4)
-                col_g2.plotly_chart(fig_pie, use_container_width=True)
-
-                # --- ÁREA DE ELIMINAR / DETALHE ---
-                st.divider()
-                with st.expander("🗑️ Eliminar Fatura Específica"):
-                    c_del1, c_del2 = st.columns(2)
-                    l_mat_del = ["Todas"] + list(df["Matricula"].unique())
-                    f_mat_del = c_del1.selectbox("Viatura (Eliminar):", l_mat_del)
-                    f_doc_del = c_del2.text_input("Nº Fatura (Eliminar):")
-                    df_del = df.copy(); df_del['Idx'] = df_del.index
-                    if f_mat_del != "Todas": df_del = df_del[df_del["Matricula"] == f_mat_del]
-                    if f_doc_del: df_del = df_del[df_del["Num_Fatura"].astype(str).str.contains(f_doc_del, case=False)]
-                    if not df_del.empty:
-                        ops = [f"Linha {r.Idx} | {r.Data_Fatura.date()} | {r.Matricula} | {r.Valor_Visual}" for _, r in df_del.iterrows()]
-                        escolha = st.selectbox("Selecionar para Apagar:", ops[::-1])
-                        if st.button("❌ Confirmar Eliminação"):
-                            idx = int(escolha.split(" |")[0].replace("Linha ", ""))
-                            if eliminar_registo(idx): st.rerun()
-
-                st.subheader("📋 Detalhe das Faturas (Filtradas)")
-                st.dataframe(df_f, use_container_width=True, hide_index=True,
-                    column_order=["Data_Fatura", "Matricula", "Categoria", "Valor_Visual", "KM_Atuais", "Num_Fatura", "Descricao"],
-                    column_config={
-                        "Matricula": st.column_config.TextColumn("Viatura"),
-                        "Categoria": st.column_config.TextColumn("Categoria"),
-                        "Valor_Visual": st.column_config.TextColumn("Valor (€)"),
-                        "KM_Atuais": st.column_config.NumberColumn("KMs", format="%d km"),
-                        "Data_Fatura": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-                        "Num_Fatura": st.column_config.TextColumn("Nº Fatura"),
-                        "Descricao": st.column_config.TextColumn("Descrição")
-                    }
-                )
-            else: st.warning("Sem dados para os filtros selecionados.")
-
-    # --- CONTEÚDO 3: VALIDADES ---
-    elif menu == "📅 Validades & Alertas":
-        st.subheader("Controlo de Prazos")
-        st.info("ℹ️ Para **APAGAR** uma data, limpa o campo (deixa vazio) e clica em Atualizar.")
-        
-        with st.expander("📝 Atualizar Validade", expanded=True):
-            with st.form("form_validade"):
-                c_v1, c_v2 = st.columns(2)
-                v_mat = c_v1.selectbox("Qual a Viatura?", LISTA_VIATURAS)
-                v_obs = c_v2.text_input("Observações (Opcional)")
-                
-                c_d1, c_d2, c_d3 = st.columns(3)
-                d_seg = c_d1.date_input("Próximo Seguro", value=None)
-                d_insp = c_d2.date_input("Próxima Inspeção", value=None)
-                d_iuc = c_d3.date_input("Próximo IUC", value=None)
-                
-                if st.form_submit_button("Atualizar Datas", type="primary", use_container_width=True):
-                    dados_v = [v_mat, str(d_seg) if d_seg else "", str(d_insp) if d_insp else "", str(d_iuc) if d_iuc else "", v_obs]
-                    if guardar_validade_nova(dados_v):
-                        st.success(f"✅ Dados da {v_mat} atualizados!")
-                        st.rerun() 
-                    else: st.error("Erro.")
-
-        st.divider()
-        st.subheader("📋 Estado Geral da Frota")
-        df_vals = carregar_validades()
-        if not df_vals.empty:
-            st.dataframe(df_vals, use_container_width=True, hide_index=True,
-                column_config={
-                    "Matricula": st.column_config.TextColumn("Viatura", width="small"),
-                    "Data_Seguro": st.column_config.DateColumn("Seguro", format="DD/MM/YYYY"),
-                    "Data_Inspecao": st.column_config.DateColumn("Inspeção", format="DD/MM/YYYY"),
-                    "Data_IUC": st.column_config.DateColumn("IUC", format="DD/MM/YYYY"),
-                    "Observacoes": st.column_config.TextColumn("Notas")
-                }
-            )
+                    pivot[col] = pivot[col].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ","
