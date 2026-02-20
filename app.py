@@ -58,7 +58,6 @@ def carregar_dados():
     if wb:
         try:
             sheet = wb.sheet1 
-            # MAGIA SUPREMA: Ler tudo como texto puro. Ignora o "Inglês" e lê exatamente como está no Excel!
             data = sheet.get_all_values()
             if not data or len(data) <= 1: 
                 return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
@@ -71,7 +70,6 @@ def guardar_registo(dados):
     wb = conectar_gsheets()
     if wb:
         try: 
-            # Gravar forçando que o utilizador escreveu (para o Excel interpretar bem)
             wb.sheet1.append_row(dados, value_input_option='USER_ENTERED')
             return True
         except: return False
@@ -177,16 +175,41 @@ else:
             nf = st.text_input("Nº Fatura")
             
         k1, k2, k3 = st.columns(3)
-        with k1: km = st.number_input("KMs", step=1)
-        with k2:
-            if cat == "Lavagem": val = st.number_input("Valor (€)", value=18.50, step=0.01)
-            else: val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
-        with k3: desc = st.text_input("Descrição")
+        with k1: 
+            km = st.number_input("KMs", step=1)
+        
+        # Lógica Específica para Combustível + AdBlue
+        if cat == "Combustível":
+            with k2:
+                val_comb = st.number_input("Valor Gasóleo (€)", min_value=0.0, step=0.01)
+            with k3:
+                tem_adblue = st.checkbox("💧 Levou AdBlue?")
+                if tem_adblue:
+                    val_adblue = st.number_input("Valor AdBlue (€)", min_value=0.0, step=0.01)
+                else:
+                    val_adblue = 0.0
+            
+            # Soma os dois valores automaticamente
+            val = val_comb + val_adblue
+            desc_input = st.text_input("Descrição (Opcional)")
+            
+            # Coloca automaticamente a anotação na descrição
+            if tem_adblue and val_adblue > 0:
+                desc = f"AdBlue: {val_adblue:.2f}€ | {desc_input}".strip(" |")
+                st.info(f"💶 **Valor Total da Fatura a Gravar:** {val:.2f} € (Gasóleo + AdBlue)")
+            else:
+                desc = desc_input
+                
+        else:
+            with k2:
+                if cat == "Lavagem": val = st.number_input("Valor (€)", value=18.50, step=0.01)
+                else: val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+            with k3: 
+                desc = st.text_input("Descrição")
             
         st.write("") 
         
         if st.button("💾 Gravar", type="primary", use_container_width=True):
-            # Formata para o Excel com vírgula para ele entender à primeira!
             val_para_gravar = f"{val:.2f}".replace('.', ',')
 
             if cat == "Lavagem":
@@ -207,17 +230,15 @@ else:
                         st.rerun()
                 else: st.warning("⚠️ Preenche Valor e Nº Fatura")
 
-    # --- CONTEÚDO 2: RESUMO FINANCEIRO E TABELA DO PATRÃO ---
+    # --- CONTEÚDO 2: RESUMO FINANCEIRO ---
     elif menu == "📊 Resumo Financeiro":
         df = carregar_dados()
         if not df.empty:
             
-            # --- FUNÇÃO 100% LIMPA (Lê o texto do Excel e transforma em número) ---
             def limpar_valor_definitivo(row):
                 v = row.get('Valor', '0')
                 try:
                     if pd.isna(v) or v == "": return 0.0
-                    
                     v_str = str(v).replace('€', '').strip().replace(' ', '')
                     if '.' in v_str and ',' in v_str:
                         v_str = v_str.replace('.', '').replace(',', '.')
@@ -232,7 +253,6 @@ else:
             df['KM_Atuais'] = pd.to_numeric(df['KM_Atuais'], errors='coerce').fillna(0).astype(int)
             df = df.dropna(subset=['Data_Fatura']) 
 
-            # FILTROS TODOS COMPLETOS
             with st.expander("🔍 Configurar Filtros", expanded=True):
                 df['Ano'] = df['Data_Fatura'].dt.year.astype(int)
                 df['Mês'] = df['Data_Fatura'].dt.month.astype(int)
@@ -252,7 +272,6 @@ else:
                 f_mats = c_mat.multiselect("Viaturas:", sorted(df["Matricula"].unique()))
                 f_cats = c_cat.multiselect("Categorias:", sorted(df["Categoria"].unique()))
 
-            # Aplica Filtros
             df_f = df.copy()
             if f_ano != "Todos": df_f = df_f[df_f['Ano'] == f_ano]
             if f_mes != "Todos": df_f = df_f[df_f['Nome_Mês'] == f_mes]
@@ -263,7 +282,6 @@ else:
             if not df_f.empty:
                 st.divider()
                 
-                # TABELA DO PATRÃO
                 st.subheader("📊 Resumo por Viatura e Mês")
                 pivot = pd.pivot_table(df_f, values='Valor', index='Matricula', columns='Nome_Mês', aggfunc='sum', fill_value=0)
                 meses_ordem = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -279,7 +297,6 @@ else:
 
                 st.write("---")
                 
-                # GRÁFICOS
                 col_g1, col_g2 = st.columns(2)
                 df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
                 df_ev.columns = ['Mês', 'Categoria', 'Valor'] 
