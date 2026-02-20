@@ -280,4 +280,88 @@ else:
                 pivot['Total Gasto'] = pivot.sum(axis=1)
                 pivot = pivot.sort_values('Total Gasto', ascending=False)
                 for col in pivot.columns:
-                    pivot[col] = pivot[col].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ","
+                    pivot[col] = pivot[col].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
+                    
+                st.dataframe(pivot, use_container_width=True)
+
+                st.write("---")
+                
+                # --- GRÁFICOS ---
+                col_g1, col_g2 = st.columns(2)
+                df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
+                df_ev.columns = ['Mês', 'Categoria', 'Valor'] 
+                
+                fig_bar_stack = px.bar(df_ev, x='Mês', y='Valor', color='Categoria', title="Evolução Mensal (Por Categoria)", text_auto='.2s')
+                col_g1.plotly_chart(fig_bar_stack, use_container_width=True)
+                
+                fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição de Custos", hole=0.4)
+                col_g2.plotly_chart(fig_pie, use_container_width=True)
+
+                # --- ÁREA DE ELIMINAR / DETALHE ---
+                st.divider()
+                with st.expander("🗑️ Eliminar Fatura Específica"):
+                    c_del1, c_del2 = st.columns(2)
+                    l_mat_del = ["Todas"] + list(df["Matricula"].unique())
+                    f_mat_del = c_del1.selectbox("Viatura (Eliminar):", l_mat_del)
+                    f_doc_del = c_del2.text_input("Nº Fatura (Eliminar):")
+                    df_del = df.copy(); df_del['Idx'] = df_del.index
+                    if f_mat_del != "Todas": df_del = df_del[df_del["Matricula"] == f_mat_del]
+                    if f_doc_del: df_del = df_del[df_del["Num_Fatura"].astype(str).str.contains(f_doc_del, case=False)]
+                    if not df_del.empty:
+                        ops = [f"Linha {r.Idx} | {r.Data_Fatura.date()} | {r.Matricula} | {r.Valor_Visual}" for _, r in df_del.iterrows()]
+                        escolha = st.selectbox("Selecionar para Apagar:", ops[::-1])
+                        if st.button("❌ Confirmar Eliminação"):
+                            idx = int(escolha.split(" |")[0].replace("Linha ", ""))
+                            if eliminar_registo(idx): st.rerun()
+
+                st.subheader("📋 Detalhe das Faturas (Filtradas)")
+                st.dataframe(df_f, use_container_width=True, hide_index=True,
+                    column_order=["Data_Fatura", "Matricula", "Categoria", "Valor_Visual", "KM_Atuais", "Num_Fatura", "Descricao"],
+                    column_config={
+                        "Matricula": st.column_config.TextColumn("Viatura"),
+                        "Categoria": st.column_config.TextColumn("Categoria"),
+                        "Valor_Visual": st.column_config.TextColumn("Valor (€)"),
+                        "KM_Atuais": st.column_config.NumberColumn("KMs", format="%d km"),
+                        "Data_Fatura": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
+                        "Num_Fatura": st.column_config.TextColumn("Nº Fatura"),
+                        "Descricao": st.column_config.TextColumn("Descrição")
+                    }
+                )
+            else: st.warning("Sem dados para os filtros selecionados.")
+
+    # --- CONTEÚDO 3: VALIDADES ---
+    elif menu == "📅 Validades & Alertas":
+        st.subheader("Controlo de Prazos")
+        st.info("ℹ️ Para **APAGAR** uma data, limpa o campo (deixa vazio) e clica em Atualizar.")
+        
+        with st.expander("📝 Atualizar Validade", expanded=True):
+            with st.form("form_validade"):
+                c_v1, c_v2 = st.columns(2)
+                v_mat = c_v1.selectbox("Qual a Viatura?", LISTA_VIATURAS)
+                v_obs = c_v2.text_input("Observações (Opcional)")
+                
+                c_d1, c_d2, c_d3 = st.columns(3)
+                d_seg = c_d1.date_input("Próximo Seguro", value=None)
+                d_insp = c_d2.date_input("Próxima Inspeção", value=None)
+                d_iuc = c_d3.date_input("Próximo IUC", value=None)
+                
+                if st.form_submit_button("Atualizar Datas", type="primary", use_container_width=True):
+                    dados_v = [v_mat, str(d_seg) if d_seg else "", str(d_insp) if d_insp else "", str(d_iuc) if d_iuc else "", v_obs]
+                    if guardar_validade_nova(dados_v):
+                        st.success(f"✅ Dados da {v_mat} atualizados!")
+                        st.rerun() 
+                    else: st.error("Erro.")
+
+        st.divider()
+        st.subheader("📋 Estado Geral da Frota")
+        df_vals = carregar_validades()
+        if not df_vals.empty:
+            st.dataframe(df_vals, use_container_width=True, hide_index=True,
+                column_config={
+                    "Matricula": st.column_config.TextColumn("Viatura", width="small"),
+                    "Data_Seguro": st.column_config.DateColumn("Seguro", format="DD/MM/YYYY"),
+                    "Data_Inspecao": st.column_config.DateColumn("Inspeção", format="DD/MM/YYYY"),
+                    "Data_IUC": st.column_config.DateColumn("IUC", format="DD/MM/YYYY"),
+                    "Observacoes": st.column_config.TextColumn("Notas")
+                }
+            )
