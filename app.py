@@ -34,21 +34,11 @@ st.markdown("""
     div.stImage > img { display: block; margin-left: auto; margin-right: auto; }
     
     /* Ajuste visual do Menu Horizontal (Radio) */
-    div[role="radiogroup"] > label > div:first-of-type {
-        display: none;
-    }
-    div[role="radiogroup"] {
-        flex-direction: row;
-        justify-content: center;
-        gap: 20px;
-    }
+    div[role="radiogroup"] > label > div:first-of-type { display: none; }
+    div[role="radiogroup"] { flex-direction: row; justify-content: center; gap: 20px; }
     
     /* Métrica de Alertas */
-    div[data-testid="metric-container"] {
-        background-color: #F0F2F6;
-        padding: 10px;
-        border-radius: 5px;
-    }
+    div[data-testid="metric-container"] { background-color: #F0F2F6; padding: 10px; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -233,6 +223,9 @@ else:
         st.write("") 
         
         if st.button("💾 Gravar", type="primary", use_container_width=True):
+            # AQUI ESTÁ A MAGIA PARA O FUTURO: Transforma logo num texto com VÍRGULA para o Google Sheets não bugar!
+            val_str = f"{val:.2f}".replace('.', ',')
+
             if cat == "Lavagem":
                 if not mat:
                     st.warning("⚠️ Escolhe pelo menos uma viatura.")
@@ -241,7 +234,7 @@ else:
                 else:
                     sucesso = True
                     for viatura in mat:
-                        if not guardar_registo([str(dt), viatura, cat, val, km, nf, desc]):
+                        if not guardar_registo([str(dt), viatura, cat, val_str, km, nf, desc]):
                             sucesso = False
                     
                     if sucesso:
@@ -251,7 +244,7 @@ else:
                         st.error("Ocorreu um erro a gravar no Excel.")
             else:
                 if val > 0 and nf:
-                    if guardar_registo([str(dt), mat, cat, val, km, nf, desc]):
+                    if guardar_registo([str(dt), mat, cat, val_str, km, nf, desc]):
                         st.success("✅ Fatura registada!")
                         st.rerun()
                 else: 
@@ -262,36 +255,35 @@ else:
         df = carregar_dados()
         if not df.empty:
             
-            # --- FUNÇÃO BLINDADA PARA LER VALORES ---
-            def corrigir_valor(v):
+            # --- FUNÇÃO DETETIVE (RESOLVE O PASSADO SOZINHA) ---
+            def corrigir_valor_avancado(row):
+                v = row['Valor']
+                cat = row.get('Categoria', '')
                 try:
                     if v is None or v == "": return 0.0
                     
-                    # 1. Se o Google Sheets já mandou o número certo (int ou float)
                     if isinstance(v, (int, float)):
                         valor = float(v)
                     else:
-                        # 2. Se mandou como Texto (ex: "73,10 €" ou "1.234,56")
                         v_str = str(v).replace('€', '').strip().replace(' ', '')
-                        
-                        # Se tiver ponto e vírgula, limpa o ponto dos milhares
                         if '.' in v_str and ',' in v_str:
                             v_str = v_str.replace('.', '').replace(',', '.')
-                        # Se tiver só vírgula, troca por ponto para o Python entender
                         elif ',' in v_str:
                             v_str = v_str.replace(',', '.')
-                        
                         valor = float(v_str)
-                    
-                    # 3. Proteção anti-bug (Se o Sheets engoliu a vírgula e mandou ex: 7310 em vez de 73.10)
-                    if valor > 2000: 
-                        return valor / 100
-                        
+
+                    # A MÁGICA DE RECUPERAÇÃO DE ERROS ANTIGOS DO GOOGLE SHEETS
+                    if cat == "Combustível":
+                        if valor >= 2000:       # Ex: 8652 -> foi 86.52
+                            return valor / 100
+                        elif valor >= 300:      # Ex: 731 -> foi 73.10 | 1084 -> foi 108.40
+                            return valor / 10
+                            
                     return valor
                 except: 
                     return 0.0
 
-            df['Valor'] = df['Valor'].apply(corrigir_valor)
+            df['Valor'] = df.apply(corrigir_valor_avancado, axis=1)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
@@ -304,7 +296,7 @@ else:
                 if f_mat_del != "Todas": df_del = df_del[df_del["Matricula"] == f_mat_del]
                 if f_doc_del: df_del = df_del[df_del["Num_Fatura"].astype(str).str.contains(f_doc_del, case=False)]
                 if not df_del.empty:
-                    ops = [f"Linha {r.Idx} | {r.Data_Fatura.date()} | {r.Matricula} | {r.Valor:.2f}€" for _, r in df_del.iterrows()]
+                    ops = [f"Linha {r.Idx} | {r.Data_Fatura.date()} | {r.Matricula} | {r.Valor_Visual}" for _, r in df_del.iterrows()]
                     escolha = st.selectbox("Selecionar:", ops[::-1])
                     if st.button("❌ Confirmar"):
                         idx = int(escolha.split(" |")[0].replace("Linha ", ""))
