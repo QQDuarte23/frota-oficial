@@ -223,7 +223,7 @@ else:
         st.write("") 
         
         if st.button("💾 Gravar", type="primary", use_container_width=True):
-            # AQUI ESTÁ A MAGIA PARA O FUTURO: Transforma logo num texto com VÍRGULA para o Google Sheets não bugar!
+            # AQUI ESTÁ A MAGIA PARA O FUTURO: Transforma logo num texto com VÍRGULA para o Google Sheets não errar!
             val_str = f"{val:.2f}".replace('.', ',')
 
             if cat == "Lavagem":
@@ -257,7 +257,7 @@ else:
             
             # --- FUNÇÃO DETETIVE (RESOLVE O PASSADO SOZINHA) ---
             def corrigir_valor_avancado(row):
-                v = row['Valor']
+                v = row.get('Valor', 0)
                 cat = row.get('Categoria', '')
                 try:
                     if v is None or v == "": return 0.0
@@ -272,17 +272,21 @@ else:
                             v_str = v_str.replace(',', '.')
                         valor = float(v_str)
 
-                    # A MÁGICA DE RECUPERAÇÃO DE ERROS ANTIGOS DO GOOGLE SHEETS
+                    # A MÁGICA QUE RECUPERA OS ERROS ANTIGOS DO GOOGLE SHEETS
                     if cat == "Combustível":
-                        if valor >= 2000:       # Ex: 8652 -> foi 86.52
+                        if valor >= 2000:       # Ex: 8652 passa a 86.52
                             return valor / 100
-                        elif valor >= 300:      # Ex: 731 -> foi 73.10 | 1084 -> foi 108.40
+                        elif valor >= 300:      # Ex: 731 passa a 73.10 | 1084 passa a 108.40
+                            return valor / 10
+                    elif cat == "Lavagem":
+                        if valor > 50:          # Ex: 185 passa a 18.50
                             return valor / 10
                             
                     return valor
                 except: 
                     return 0.0
 
+            # Aplica a função linha a linha
             df['Valor'] = df.apply(corrigir_valor_avancado, axis=1)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
