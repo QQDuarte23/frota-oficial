@@ -118,7 +118,6 @@ def carregar_validades():
     return pd.DataFrame()
 
 def guardar_validade_nova(dados):
-    # dados = [Matricula, Seg, Insp, IUC, Obs]
     wb = conectar_gsheets()
     if wb:
         try:
@@ -206,16 +205,12 @@ else:
     menu = st.radio("", ["➕ Adicionar Despesa", "📊 Resumo Financeiro", "📅 Validades & Alertas"], horizontal=True)
     st.divider()
 
-    # --- CONTEÚDO 1: ADICIONAR (ALTERADO CIRURGICAMENTE) ---
+    # --- CONTEÚDO 1: ADICIONAR ---
     if menu == "➕ Adicionar Despesa":
-        # Retirado o st.form para permitir dinamismo
-        
-        # 1. Escolher Categoria Primeiro
         cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"])
         
         c1, c2 = st.columns(2)
         with c1:
-            # 2. Se for Lavagem, permite múltiplas viaturas. Se não, apenas uma.
             if cat == "Lavagem":
                 mat = st.multiselect("Viaturas (Podes escolher várias)", LISTA_VIATURAS)
             else:
@@ -228,7 +223,6 @@ else:
         with k1:
             km = st.number_input("KMs", step=1)
         with k2:
-            # 3. Se for Lavagem, valor é 18.50€. Se não, o utilizador preenche.
             if cat == "Lavagem":
                 val = st.number_input("Valor (€)", value=18.50, step=0.01)
             else:
@@ -236,19 +230,16 @@ else:
         with k3:
             desc = st.text_input("Descrição")
             
-        st.write("") # Espaço antes do botão
+        st.write("") 
         
-        # 4. Lógica de Gravação
         if st.button("💾 Gravar", type="primary", use_container_width=True):
             if cat == "Lavagem":
-                # Verificações da Lavagem (Nº Fatura não é obrigatório)
                 if not mat:
                     st.warning("⚠️ Escolhe pelo menos uma viatura.")
                 elif val <= 0:
                     st.warning("⚠️ O valor tem de ser maior que 0.")
                 else:
                     sucesso = True
-                    # Grava no Excel as linhas todas (uma por cada viatura)
                     for viatura in mat:
                         if not guardar_registo([str(dt), viatura, cat, val, km, nf, desc]):
                             sucesso = False
@@ -259,7 +250,6 @@ else:
                     else:
                         st.error("Ocorreu um erro a gravar no Excel.")
             else:
-                # Verificações Normais (Combustivel, Oficina, etc)
                 if val > 0 and nf:
                     if guardar_registo([str(dt), mat, cat, val, km, nf, desc]):
                         st.success("✅ Fatura registada!")
@@ -267,23 +257,44 @@ else:
                 else: 
                     st.warning("⚠️ Preenche Valor e Nº Fatura")
 
-    # --- CONTEÚDO 2: RESUMO (INTOCÁVEL) ---
+    # --- CONTEÚDO 2: RESUMO ---
     elif menu == "📊 Resumo Financeiro":
         df = carregar_dados()
         if not df.empty:
+            
+            # --- FUNÇÃO BLINDADA PARA LER VALORES ---
             def corrigir_valor(v):
                 try:
-                    v_str = str(v).replace('€', '').replace(',', '.')
-                    valor_float = float(v_str)
-                    if valor_float > 2000: return valor_float / 100
-                    return valor_float
-                except: return 0.0
+                    if v is None or v == "": return 0.0
+                    
+                    # 1. Se o Google Sheets já mandou o número certo (int ou float)
+                    if isinstance(v, (int, float)):
+                        valor = float(v)
+                    else:
+                        # 2. Se mandou como Texto (ex: "73,10 €" ou "1.234,56")
+                        v_str = str(v).replace('€', '').strip().replace(' ', '')
+                        
+                        # Se tiver ponto e vírgula, limpa o ponto dos milhares
+                        if '.' in v_str and ',' in v_str:
+                            v_str = v_str.replace('.', '').replace(',', '.')
+                        # Se tiver só vírgula, troca por ponto para o Python entender
+                        elif ',' in v_str:
+                            v_str = v_str.replace(',', '.')
+                        
+                        valor = float(v_str)
+                    
+                    # 3. Proteção anti-bug (Se o Sheets engoliu a vírgula e mandou ex: 7310 em vez de 73.10)
+                    if valor > 2000: 
+                        return valor / 100
+                        
+                    return valor
+                except: 
+                    return 0.0
 
             df['Valor'] = df['Valor'].apply(corrigir_valor)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'])
 
-            # Área de Eliminar
             with st.expander("🗑️ Eliminar Fatura"):
                 col_d1, col_d2 = st.columns(2)
                 l_mat_del = ["Todas"] + list(df["Matricula"].unique())
@@ -301,7 +312,6 @@ else:
 
             st.divider()
             
-            # Filtros
             with st.expander("🔍 Configurar Filtros", expanded=True):
                 c_f1, c_f2, c_f3 = st.columns(3)
                 f_mats = c_f1.multiselect("Viaturas:", sorted(df["Matricula"].unique()))
@@ -316,7 +326,6 @@ else:
             if not df_f.empty:
                 col_g1, col_g2 = st.columns(2)
                 
-                # GRÁFICO 1: EVOLUÇÃO EMPILHADA
                 df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
                 df_ev.columns = ['Mês', 'Categoria', 'Valor'] 
                 
@@ -330,12 +339,10 @@ else:
                 )
                 col_g1.plotly_chart(fig_bar_stack, use_container_width=True)
                 
-                # GRÁFICO 2: PIE CHART
                 fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição de Custos", hole=0.4)
                 col_g2.plotly_chart(fig_pie, use_container_width=True)
 
-                # GRÁFICO 3: RANKING DE GASTADORES
-                st.write("")
+                st.write("") 
                 df_ranking = df_f.groupby('Matricula')['Valor'].sum().reset_index().sort_values('Valor', ascending=False)
                 fig_ranking = px.bar(
                     df_ranking, 
@@ -365,7 +372,7 @@ else:
                 )
             else: st.warning("Sem dados.")
 
-    # --- CONTEÚDO 3: VALIDADES (INTOCÁVEL) ---
+    # --- CONTEÚDO 3: VALIDADES ---
     elif menu == "📅 Validades & Alertas":
         st.subheader("Controlo de Prazos")
         st.info("ℹ️ Para **APAGAR** uma data, limpa o campo (deixa vazio) e clica em Atualizar.")
