@@ -58,8 +58,11 @@ def carregar_dados():
     if wb:
         try:
             sheet = wb.sheet1 
-            df = pd.DataFrame(sheet.get_all_records())
-            if df.empty: return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
+            # MAGIA SUPREMA: Ler tudo como texto puro. Ignora o "Inglês" e lê exatamente como está no Excel!
+            data = sheet.get_all_values()
+            if not data or len(data) <= 1: 
+                return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
+            df = pd.DataFrame(data[1:], columns=data[0])
             return df
         except: return pd.DataFrame()
     return pd.DataFrame()
@@ -67,7 +70,10 @@ def carregar_dados():
 def guardar_registo(dados):
     wb = conectar_gsheets()
     if wb:
-        try: wb.sheet1.append_row(dados); return True
+        try: 
+            # Gravar forçando que o utilizador escreveu (para o Excel interpretar bem)
+            wb.sheet1.append_row(dados, value_input_option='USER_ENTERED')
+            return True
         except: return False
     return False
 
@@ -180,6 +186,7 @@ else:
         st.write("") 
         
         if st.button("💾 Gravar", type="primary", use_container_width=True):
+            # Formata para o Excel com vírgula para ele entender à primeira!
             val_para_gravar = f"{val:.2f}".replace('.', ',')
 
             if cat == "Lavagem":
@@ -205,45 +212,31 @@ else:
         df = carregar_dados()
         if not df.empty:
             
-            def limpar_valor_seguro(row):
-                v = row.get('Valor', 0)
-                cat = row.get('Categoria', '')
+            # --- FUNÇÃO 100% LIMPA (Lê o texto do Excel e transforma em número) ---
+            def limpar_valor_definitivo(row):
+                v = row.get('Valor', '0')
                 try:
                     if pd.isna(v) or v == "": return 0.0
                     
-                    if isinstance(v, str):
-                        v_str = v.replace('€', '').strip().replace(' ', '')
-                        if '.' in v_str and ',' in v_str:
-                            v_str = v_str.replace('.', '').replace(',', '.')
-                        elif ',' in v_str:
-                            v_str = v_str.replace(',', '.')
-                        return float(v_str)
-                        
-                    valor = float(v)
-                    
-                    if cat == "Lavagem":
-                        if valor > 50: return valor / 10 
-                        
-                    elif cat in ["Combustível", "Frio", "Oficina", "Pneus", "Portagens", "Seguro", "Inspeção", "IUC"]:
-                        if valor >= 2000:       
-                            return valor / 100
-                        elif valor > 300:       
-                            return valor / 10
-                            
-                    return valor
+                    v_str = str(v).replace('€', '').strip().replace(' ', '')
+                    if '.' in v_str and ',' in v_str:
+                        v_str = v_str.replace('.', '').replace(',', '.')
+                    elif ',' in v_str:
+                        v_str = v_str.replace(',', '.')
+                    return float(v_str)
                 except: return 0.0
 
-            df['Valor'] = df.apply(limpar_valor_seguro, axis=1)
+            df['Valor'] = df.apply(limpar_valor_definitivo, axis=1)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'], errors='coerce')
+            df['KM_Atuais'] = pd.to_numeric(df['KM_Atuais'], errors='coerce').fillna(0).astype(int)
             df = df.dropna(subset=['Data_Fatura']) 
 
-            # AQUI ESTÃO OS FILTROS TODOS RECUPERADOS!
+            # FILTROS TODOS COMPLETOS
             with st.expander("🔍 Configurar Filtros", expanded=True):
                 df['Ano'] = df['Data_Fatura'].dt.year.astype(int)
                 df['Mês'] = df['Data_Fatura'].dt.month.astype(int)
                 
-                # Linha 1: Data e Fatura
                 c_ano, c_mes, c_doc = st.columns(3)
                 lista_anos = ["Todos"] + sorted(list(df['Ano'].unique()), reverse=True)
                 f_ano = c_ano.selectbox("Ano:", lista_anos)
@@ -253,15 +246,13 @@ else:
                 
                 lista_meses = ["Todos"] + list(meses_dict.values())
                 f_mes = c_mes.selectbox("Mês:", lista_meses)
-                
                 f_doc = c_doc.text_input("Nº Fatura:")
                 
-                # Linha 2: Viaturas e Categorias (Para poderes escolher Lavagens, etc)
                 c_mat, c_cat = st.columns(2)
                 f_mats = c_mat.multiselect("Viaturas:", sorted(df["Matricula"].unique()))
                 f_cats = c_cat.multiselect("Categorias:", sorted(df["Categoria"].unique()))
 
-            # Aplica os Filtros todos
+            # Aplica Filtros
             df_f = df.copy()
             if f_ano != "Todos": df_f = df_f[df_f['Ano'] == f_ano]
             if f_mes != "Todos": df_f = df_f[df_f['Nome_Mês'] == f_mes]
@@ -272,6 +263,7 @@ else:
             if not df_f.empty:
                 st.divider()
                 
+                # TABELA DO PATRÃO
                 st.subheader("📊 Resumo por Viatura e Mês")
                 pivot = pd.pivot_table(df_f, values='Valor', index='Matricula', columns='Nome_Mês', aggfunc='sum', fill_value=0)
                 meses_ordem = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -287,6 +279,7 @@ else:
 
                 st.write("---")
                 
+                # GRÁFICOS
                 col_g1, col_g2 = st.columns(2)
                 df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
                 df_ev.columns = ['Mês', 'Categoria', 'Valor'] 
