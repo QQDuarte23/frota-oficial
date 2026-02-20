@@ -180,8 +180,6 @@ else:
         st.write("") 
         
         if st.button("💾 Gravar", type="primary", use_container_width=True):
-            # AQUI ESTÁ A PROTEÇÃO: Força a gravação como STRING (texto) com vírgula!
-            # O Excel em Português lê isto perfeitamente como número.
             val_para_gravar = f"{val:.2f}".replace('.', ',')
 
             if cat == "Lavagem":
@@ -207,14 +205,12 @@ else:
         df = carregar_dados()
         if not df.empty:
             
-            # --- FUNÇÃO DETETIVE ULTIMATE (Lê os novos e corrige os velhos) ---
             def limpar_valor_seguro(row):
                 v = row.get('Valor', 0)
                 cat = row.get('Categoria', '')
                 try:
                     if pd.isna(v) or v == "": return 0.0
                     
-                    # 1. Se for o FORMATO NOVO (Blindado, gravado como texto com vírgula)
                     if isinstance(v, str):
                         v_str = v.replace('€', '').strip().replace(' ', '')
                         if '.' in v_str and ',' in v_str:
@@ -223,33 +219,32 @@ else:
                             v_str = v_str.replace(',', '.')
                         return float(v_str)
                         
-                    # 2. Se for o FORMATO ANTIGO (Bug do Excel, gravado como número inteiro gigante)
                     valor = float(v)
                     
                     if cat == "Lavagem":
-                        if valor > 50: return valor / 10 # Transforma 185 em 18.50
+                        if valor > 50: return valor / 10 
                         
                     elif cat in ["Combustível", "Frio", "Oficina", "Pneus", "Portagens", "Seguro", "Inspeção", "IUC"]:
-                        if valor >= 2000:       # Ex: 8706 transforma-se em 87.06
+                        if valor >= 2000:       
                             return valor / 100
-                        elif valor > 300:       # Ex: 1084 transforma-se em 108.40 / 731 passa a 73.10
+                        elif valor > 300:       
                             return valor / 10
                             
                     return valor
                 except: return 0.0
 
-            # Aplica a limpeza linha a linha
             df['Valor'] = df.apply(limpar_valor_seguro, axis=1)
             df['Valor_Visual'] = df['Valor'].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
             df['Data_Fatura'] = pd.to_datetime(df['Data_Fatura'], errors='coerce')
             df = df.dropna(subset=['Data_Fatura']) 
 
-            # Filtros Globais (Ano e Mês para o Patrão)
-            with st.expander("🔍 Configurar Filtros (Data, Viatura, etc)", expanded=True):
+            # AQUI ESTÃO OS FILTROS TODOS RECUPERADOS!
+            with st.expander("🔍 Configurar Filtros", expanded=True):
                 df['Ano'] = df['Data_Fatura'].dt.year.astype(int)
                 df['Mês'] = df['Data_Fatura'].dt.month.astype(int)
                 
-                c_ano, c_mes, c_mat = st.columns(3)
+                # Linha 1: Data e Fatura
+                c_ano, c_mes, c_doc = st.columns(3)
                 lista_anos = ["Todos"] + sorted(list(df['Ano'].unique()), reverse=True)
                 f_ano = c_ano.selectbox("Ano:", lista_anos)
                 
@@ -259,18 +254,24 @@ else:
                 lista_meses = ["Todos"] + list(meses_dict.values())
                 f_mes = c_mes.selectbox("Mês:", lista_meses)
                 
+                f_doc = c_doc.text_input("Nº Fatura:")
+                
+                # Linha 2: Viaturas e Categorias (Para poderes escolher Lavagens, etc)
+                c_mat, c_cat = st.columns(2)
                 f_mats = c_mat.multiselect("Viaturas:", sorted(df["Matricula"].unique()))
+                f_cats = c_cat.multiselect("Categorias:", sorted(df["Categoria"].unique()))
 
-            # Aplica os Filtros
+            # Aplica os Filtros todos
             df_f = df.copy()
             if f_ano != "Todos": df_f = df_f[df_f['Ano'] == f_ano]
             if f_mes != "Todos": df_f = df_f[df_f['Nome_Mês'] == f_mes]
             if f_mats: df_f = df_f[df_f["Matricula"].isin(f_mats)]
+            if f_cats: df_f = df_f[df_f["Categoria"].isin(f_cats)]
+            if f_doc: df_f = df_f[df_f["Num_Fatura"].astype(str).str.contains(f_doc, case=False)]
 
             if not df_f.empty:
                 st.divider()
                 
-                # --- TABELA DO PATRÃO (PIVOT TABLE) ---
                 st.subheader("📊 Resumo por Viatura e Mês")
                 pivot = pd.pivot_table(df_f, values='Valor', index='Matricula', columns='Nome_Mês', aggfunc='sum', fill_value=0)
                 meses_ordem = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -286,7 +287,6 @@ else:
 
                 st.write("---")
                 
-                # --- GRÁFICOS ---
                 col_g1, col_g2 = st.columns(2)
                 df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
                 df_ev.columns = ['Mês', 'Categoria', 'Valor'] 
@@ -297,13 +297,12 @@ else:
                 fig_pie = px.pie(df_f, values='Valor', names='Categoria', title="Distribuição de Custos", hole=0.4)
                 col_g2.plotly_chart(fig_pie, use_container_width=True)
 
-                # --- ÁREA DE ELIMINAR / DETALHE ---
                 st.divider()
                 with st.expander("🗑️ Eliminar Fatura Específica"):
                     c_del1, c_del2 = st.columns(2)
                     l_mat_del = ["Todas"] + list(df["Matricula"].unique())
                     f_mat_del = c_del1.selectbox("Viatura (Eliminar):", l_mat_del)
-                    f_doc_del = c_del2.text_input("Nº Fatura (Eliminar):")
+                    f_doc_del = c_del2.text_input("Nº Fatura (Apagar):")
                     df_del = df.copy(); df_del['Idx'] = df_del.index
                     if f_mat_del != "Todas": df_del = df_del[df_del["Matricula"] == f_mat_del]
                     if f_doc_del: df_del = df_del[df_del["Num_Fatura"].astype(str).str.contains(f_doc_del, case=False)]
