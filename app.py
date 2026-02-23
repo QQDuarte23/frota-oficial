@@ -210,7 +210,8 @@ else:
             with k2:
                 val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
             with k3:
-                tipo_oficina = st.selectbox("Tipo de Serviço:", ["Revisão", "Discos", "Pastilhas", "Acidente"])
+                # AQUI ESTÁ A ALTERAÇÃO: Eletricista adicionado à lista!
+                tipo_oficina = st.selectbox("Tipo de Serviço:", ["Revisão", "Discos", "Pastilhas", "Acidente", "Eletricista"])
                 desc_input = st.text_input("Descrição (Opcional)")
                 desc = f"{tipo_oficina} | {desc_input}".strip(" |")
                 
