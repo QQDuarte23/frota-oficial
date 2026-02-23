@@ -202,7 +202,6 @@ else:
             val = val_comb + val_adblue
             desc_input = st.text_input("Descrição (Opcional)")
             
-            # Monta a descrição inteligente com Litros e AdBlue
             partes_desc = []
             if val_litros > 0:
                 partes_desc.append(f"Litros: {val_litros:.2f}")
@@ -234,6 +233,19 @@ else:
                 if tipo_oficina:
                     servicos_str = ", ".join(tipo_oficina)
                     desc = f"{servicos_str} | {desc_input}".strip(" |")
+                else:
+                    desc = desc_input.strip()
+
+        # AQUI ESTÁ O NOVO BLOCO PARA O SEGURO E SINISTROS
+        elif cat == "Seguro":
+            with k2:
+                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+            with k3:
+                num_sinistros = st.number_input("Nº de Sinistros neste seguro", min_value=0, step=1, value=0)
+                desc_input = st.text_input("Descrição (Opcional)")
+                
+                if num_sinistros > 0:
+                    desc = f"Sinistros: {num_sinistros} | {desc_input}".strip(" |")
                 else:
                     desc = desc_input.strip()
                 
@@ -290,7 +302,6 @@ else:
             df['KM_Atuais'] = pd.to_numeric(df['KM_Atuais'], errors='coerce').fillna(0).astype(int)
             df = df.dropna(subset=['Data_Fatura']) 
             
-            # --- DETETIVE DOS LITROS ---
             def extrair_litros(desc):
                 try:
                     if "Litros:" in str(desc):
@@ -407,7 +418,6 @@ else:
                 
                 st.plotly_chart(fig_final, use_container_width=True)
                 
-                # --- NOVO GRÁFICO DE CONSUMOS (L/100km) CORRIGIDO ---
                 st.divider()
                 st.subheader("⛽ Análise de Consumos Médios (L/100km)")
                 
@@ -415,7 +425,6 @@ else:
                 dados_consumo = []
                 
                 for mat in df_comb['Matricula'].unique():
-                    # AQUI ESTÁ A MAGIA: Só apanha faturas que têm KMs > 0 e Litros > 0. Ignora o passado vazio!
                     df_v = df_comb[(df_comb['Matricula'] == mat) & (df_comb['KM_Atuais'] > 0) & (df_comb['Litros'] > 0)].sort_values('KM_Atuais')
                     
                     if len(df_v) > 1:
@@ -424,7 +433,6 @@ else:
                         
                         if dist > 0 and litros_gastos > 0:
                             media = (litros_gastos / dist) * 100
-                            # Aumentei o limite para aceitar médias altas caso andem a carregar muito peso
                             if 0 < media < 100: 
                                 dados_consumo.append({
                                     'Matricula': mat, 
