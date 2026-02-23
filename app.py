@@ -178,7 +178,9 @@ else:
         with k1: 
             km = st.number_input("KMs", step=1)
         
-        # Lógica Específica para Combustível + AdBlue
+        # -----------------------------------------------------
+        # LÓGICA DE CAMPOS DINÂMICOS CONSOANTE A CATEGORIA
+        # -----------------------------------------------------
         if cat == "Combustível":
             with k2:
                 val_comb = st.number_input("Valor Gasóleo (€)", min_value=0.0, step=0.01)
@@ -189,16 +191,24 @@ else:
                 else:
                     val_adblue = 0.0
             
-            # Soma os dois valores automaticamente
             val = val_comb + val_adblue
             desc_input = st.text_input("Descrição (Opcional)")
             
-            # Coloca automaticamente a anotação na descrição
             if tem_adblue and val_adblue > 0:
                 desc = f"AdBlue: {val_adblue:.2f}€ | {desc_input}".strip(" |")
                 st.info(f"💶 **Valor Total da Fatura a Gravar:** {val:.2f} € (Gasóleo + AdBlue)")
             else:
                 desc = desc_input
+                
+        elif cat == "Frio":
+            with k2:
+                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+            with k3:
+                # O novo botão de escolha para o Frio!
+                tipo_frio = st.radio("Tipo de Serviço:", ["Revisão", "Reparação"], horizontal=True)
+                desc_input = st.text_input("Descrição (Opcional)")
+                # Junta a palavra Revisão ou Reparação à descrição
+                desc = f"{tipo_frio} | {desc_input}".strip(" |")
                 
         else:
             with k2:
@@ -209,6 +219,9 @@ else:
             
         st.write("") 
         
+        # -----------------------------------------------------
+        # GRAVAÇÃO NO EXCEL
+        # -----------------------------------------------------
         if st.button("💾 Gravar", type="primary", use_container_width=True):
             val_para_gravar = f"{val:.2f}".replace('.', ',')
 
