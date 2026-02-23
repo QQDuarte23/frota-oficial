@@ -210,10 +210,16 @@ else:
             with k2:
                 val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
             with k3:
-                # AQUI ESTÁ A ALTERAÇÃO: Eletricista adicionado à lista!
-                tipo_oficina = st.selectbox("Tipo de Serviço:", ["Revisão", "Discos", "Pastilhas", "Acidente", "Eletricista"])
+                # AQUI ESTÁ A ALTERAÇÃO: multiselect para permitir várias opções!
+                tipo_oficina = st.multiselect("Tipo de Serviço (Escolhe 1 ou mais):", ["Revisão", "Discos", "Pastilhas", "Acidente", "Eletricista", "Avaria"])
                 desc_input = st.text_input("Descrição (Opcional)")
-                desc = f"{tipo_oficina} | {desc_input}".strip(" |")
+                
+                if tipo_oficina:
+                    # Junta os serviços todos com vírgulas
+                    servicos_str = ", ".join(tipo_oficina)
+                    desc = f"{servicos_str} | {desc_input}".strip(" |")
+                else:
+                    desc = desc_input.strip()
                 
         else:
             with k2:
