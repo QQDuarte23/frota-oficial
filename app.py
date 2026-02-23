@@ -205,6 +205,14 @@ else:
                 tipo_frio = st.selectbox("Tipo de Serviço:", ["Revisão", "Reparação"])
                 desc_input = st.text_input("Descrição (Opcional)")
                 desc = f"{tipo_frio} | {desc_input}".strip(" |")
+
+        elif cat == "Oficina":
+            with k2:
+                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+            with k3:
+                tipo_oficina = st.selectbox("Tipo de Serviço:", ["Revisão", "Discos", "Pastilhas", "Acidente"])
+                desc_input = st.text_input("Descrição (Opcional)")
+                desc = f"{tipo_oficina} | {desc_input}".strip(" |")
                 
         else:
             with k2:
@@ -343,7 +351,6 @@ else:
                     }
                 )
 
-                # --- NOVO GRÁFICO FINAL (O DESENHO DO PATRÃO) ---
                 st.divider()
                 st.subheader("📈 Custo Total por Viatura (Detalhado)")
                 df_grafico_final = df_f.groupby(['Matricula', 'Categoria'])['Valor'].sum().reset_index()
@@ -353,17 +360,16 @@ else:
                     y='Matricula', 
                     x='Valor', 
                     color='Categoria', 
-                    orientation='h', # Transforma as barras em horizontais
+                    orientation='h',
                     title="Despesas por Viatura divididas por Categoria",
                     text_auto='.2s'
                 )
                 
-                # Ordena as barras para as carrinhas mais gastadoras ficarem no topo do gráfico
                 fig_final.update_layout(
                     yaxis={'categoryorder':'total ascending'}, 
                     xaxis_title="Total Gasto (€)", 
                     yaxis_title="Viatura",
-                    height=600 # Dá um bocado mais de altura para caberem bem as viaturas todas
+                    height=600 
                 )
                 
                 st.plotly_chart(fig_final, use_container_width=True)
