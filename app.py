@@ -5,10 +5,19 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 from datetime import datetime, timedelta
 import plotly.express as px
+from PIL import Image
 
-# --- 1. CONFIGURAÇÃO GERAL ---
-# ALTERAÇÃO AQUI: Em vez do camião, vai buscar a imagem "logo.png"
-st.set_page_config(page_title="Qerqueijo Frota", page_icon="logo.png", layout="wide")
+# --- 1. CONFIGURAÇÃO GERAL E ÍCONE ---
+# Tenta carregar a imagem do logo para forçar o Chrome a mostrá-la na aba
+try:
+    icone = Image.open("logo.png")
+except:
+    try:
+        icone = Image.open(".streamlit/logo.png")
+    except:
+        icone = "🚛" # Plano B caso não encontre a imagem
+
+st.set_page_config(page_title="Qerqueijo Frota", page_icon=icone, layout="wide")
 
 LISTA_VIATURAS = [
     "06-QO-19", "59-RT-87", "19-TF-05", "28-UO-50", "17-UM-19", "83-ZL-79", 
