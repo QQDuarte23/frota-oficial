@@ -178,9 +178,7 @@ else:
         with k1: 
             km = st.number_input("KMs", step=1)
         
-        # -----------------------------------------------------
-        # LÓGICA DE CAMPOS DINÂMICOS CONSOANTE A CATEGORIA
-        # -----------------------------------------------------
+        # LÓGICA DE CAMPOS DINÂMICOS
         if cat == "Combustível":
             with k2:
                 val_comb = st.number_input("Valor Gasóleo (€)", min_value=0.0, step=0.01)
@@ -204,10 +202,9 @@ else:
             with k2:
                 val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
             with k3:
-                # O novo botão de escolha para o Frio!
-                tipo_frio = st.radio("Tipo de Serviço:", ["Revisão", "Reparação"], horizontal=True)
+                # Mudança feita aqui!selectbox em vez de radio para fugir ao CSS
+                tipo_frio = st.selectbox("Tipo de Serviço:", ["Revisão", "Reparação"])
                 desc_input = st.text_input("Descrição (Opcional)")
-                # Junta a palavra Revisão ou Reparação à descrição
                 desc = f"{tipo_frio} | {desc_input}".strip(" |")
                 
         else:
@@ -219,9 +216,6 @@ else:
             
         st.write("") 
         
-        # -----------------------------------------------------
-        # GRAVAÇÃO NO EXCEL
-        # -----------------------------------------------------
         if st.button("💾 Gravar", type="primary", use_container_width=True):
             val_para_gravar = f"{val:.2f}".replace('.', ',')
 
@@ -252,6 +246,7 @@ else:
                 v = row.get('Valor', '0')
                 try:
                     if pd.isna(v) or v == "": return 0.0
+                    
                     v_str = str(v).replace('€', '').strip().replace(' ', '')
                     if '.' in v_str and ',' in v_str:
                         v_str = v_str.replace('.', '').replace(',', '.')
