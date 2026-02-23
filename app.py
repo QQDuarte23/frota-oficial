@@ -7,7 +7,8 @@ from datetime import datetime, timedelta
 import plotly.express as px
 
 # --- 1. CONFIGURAÇÃO GERAL ---
-st.set_page_config(page_title="Qerqueijo Frota", page_icon="🚛", layout="wide")
+# ALTERAÇÃO AQUI: Em vez do camião, vai buscar a imagem "logo.png"
+st.set_page_config(page_title="Qerqueijo Frota", page_icon="logo.png", layout="wide")
 
 LISTA_VIATURAS = [
     "06-QO-19", "59-RT-87", "19-TF-05", "28-UO-50", "17-UM-19", "83-ZL-79", 
@@ -210,12 +211,10 @@ else:
             with k2:
                 val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
             with k3:
-                # AQUI ESTÁ A ALTERAÇÃO: multiselect para permitir várias opções!
                 tipo_oficina = st.multiselect("Tipo de Serviço (Escolhe 1 ou mais):", ["Revisão", "Discos", "Pastilhas", "Acidente", "Eletricista", "Avaria"])
                 desc_input = st.text_input("Descrição (Opcional)")
                 
                 if tipo_oficina:
-                    # Junta os serviços todos com vírgulas
                     servicos_str = ", ".join(tipo_oficina)
                     desc = f"{servicos_str} | {desc_input}".strip(" |")
                 else:
