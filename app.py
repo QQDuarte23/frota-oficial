@@ -191,7 +191,6 @@ else:
         if cat == "Combustível":
             with k2:
                 val_comb = st.number_input("Valor Gasóleo (€)", min_value=0.0, step=0.01)
-                # AQUI ESTÁ O NOVO CAMPO DE LITROS!
                 val_litros = st.number_input("Litros Abastecidos", min_value=0.0, step=0.01)
             with k3:
                 tem_adblue = st.checkbox("💧 Levou AdBlue?")
@@ -408,26 +407,25 @@ else:
                 
                 st.plotly_chart(fig_final, use_container_width=True)
                 
-                # --- NOVO GRÁFICO DE CONSUMOS (L/100km) ---
+                # --- NOVO GRÁFICO DE CONSUMOS (L/100km) CORRIGIDO ---
                 st.divider()
                 st.subheader("⛽ Análise de Consumos Médios (L/100km)")
                 
                 df_comb = df_f[df_f['Categoria'] == 'Combustível'].copy()
                 dados_consumo = []
                 
-                # A magia para calcular as médias exatas por viatura
                 for mat in df_comb['Matricula'].unique():
-                    df_v = df_comb[(df_comb['Matricula'] == mat) & (df_comb['KM_Atuais'] > 0)].sort_values('KM_Atuais')
-                    # Só consegue calcular se houver pelo menos 2 abastecimentos registados!
+                    # AQUI ESTÁ A MAGIA: Só apanha faturas que têm KMs > 0 e Litros > 0. Ignora o passado vazio!
+                    df_v = df_comb[(df_comb['Matricula'] == mat) & (df_comb['KM_Atuais'] > 0) & (df_comb['Litros'] > 0)].sort_values('KM_Atuais')
+                    
                     if len(df_v) > 1:
                         dist = df_v['KM_Atuais'].max() - df_v['KM_Atuais'].min()
-                        # Somamos os litros gastos ENTRE o primeiro e o último abastecimento filtrado
                         litros_gastos = df_v['Litros'].iloc[1:].sum() 
                         
                         if dist > 0 and litros_gastos > 0:
                             media = (litros_gastos / dist) * 100
-                            # Filtro de segurança (se alguém se enganar a meter os KMs num dia, ignora médias absurdas)
-                            if 0 < media < 45: 
+                            # Aumentei o limite para aceitar médias altas caso andem a carregar muito peso
+                            if 0 < media < 100: 
                                 dados_consumo.append({
                                     'Matricula': mat, 
                                     'Média (L/100km)': round(media, 2),
@@ -448,19 +446,18 @@ else:
                         title="Viaturas Mais Gulosas (Média de Litros por 100km)",
                         text_auto=True,
                         color='Média (L/100km)',
-                        color_continuous_scale='Reds' # Quanto mais gasta, mais vermelho fica!
+                        color_continuous_scale='Reds'
                     )
                     fig_cons.update_layout(yaxis={'categoryorder':'total ascending'})
                     c_cons1.plotly_chart(fig_cons, use_container_width=True)
                     
-                    # Tabela ao lado do gráfico com os dados brutos para o patrão
                     c_cons2.dataframe(
                         df_cons[['Matricula', 'Média (L/100km)', 'KMs Percorridos']], 
                         use_container_width=True, 
                         hide_index=True
                     )
                 else:
-                    st.info("💡 Não há registos de abastecimento suficientes (com Litros e KMs inseridos) no período selecionado para calcular as médias.")
+                    st.info("💡 Não há registos de abastecimento suficientes (com Litros e KMs inseridos) no período selecionado para calcular as médias reais.")
 
             else: st.warning("Sem dados para os filtros selecionados.")
 
