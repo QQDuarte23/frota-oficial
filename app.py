@@ -66,7 +66,7 @@ def carregar_dados():
     wb = conectar_gsheets()
     if wb:
         try:
-            sheet = wb.sheet1 
+            sheet = wb.get_worksheet(0) # CORREÇÃO AQUI
             data = sheet.get_all_values()
             if not data or len(data) <= 1: 
                 return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
@@ -79,7 +79,7 @@ def guardar_registo(dados):
     wb = conectar_gsheets()
     if wb:
         try: 
-            wb.sheet1.append_row(dados, value_input_option='USER_ENTERED')
+            wb.get_worksheet(0).append_row(dados, value_input_option='USER_ENTERED') # CORREÇÃO AQUI
             return True
         except: return False
     return False
@@ -87,7 +87,7 @@ def guardar_registo(dados):
 def eliminar_registo(indice):
     wb = conectar_gsheets()
     if wb:
-        try: wb.sheet1.delete_rows(indice + 2); return True
+        try: wb.get_worksheet(0).delete_rows(indice + 2); return True # CORREÇÃO AQUI
         except: return False
     return False
 
