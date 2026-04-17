@@ -1,251 +1,4 @@
-import streamlit as st
-import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import json
-from datetime import datetime, timedelta
-import plotly.express as px
-from PIL import Image
-
-# --- 1. CONFIGURAÇÃO GERAL E ÍCONE ---
-try:
-    icone = Image.open("logo.png")
-except:
-    try:
-        icone = Image.open(".streamlit/logo.png")
-    except:
-        icone = "🚛" 
-
-st.set_page_config(page_title="Qerqueijo Frota", page_icon=icone, layout="wide")
-
-LISTA_VIATURAS = [
-    "06-QO-19", "59-RT-87", "19-TF-05", "28-UO-50", "17-UM-19", "83-ZL-79", 
-    "83-ZL-83", "AD-66-VN", "AD-71-VN", "AL-36-FF", "AL-30-FF", "AT-79-QU", 
-    "AT-87-QU", "BE-64-TJ", "BE-16-TL", "BE-35-TJ", "BL-33-LG", "BL-68-LF", 
-    "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"
-]
-
-# CSS
-st.markdown("""
-    <style>
-    [data-testid="stToolbar"] {visibility: hidden !important;}
-    footer {visibility: hidden;}
-    .stAppDeployButton {display: none;}
-    .stApp { background-color: white; }
-    [data-testid="stSidebar"] { background-color: #F0F2F6; }
-    h1, h2, h3 { color: #002060; }
-    .stButton>button { background-color: #002060; color: white; border: none; }
-    .stButton>button:hover { background-color: #001540; color: white; }
-    div.stImage > img { display: block; margin-left: auto; margin-right: auto; }
-    div[role="radiogroup"] > label > div:first-of-type { display: none; }
-    div[role="radiogroup"] { flex-direction: row; justify-content: center; gap: 20px; }
-    div[data-testid="metric-container"] { background-color: #F0F2F6; padding: 10px; border-radius: 5px; }
-    </style>
-    """, unsafe_allow_html=True)
-
-NOME_FOLHA_GOOGLE = "dados_frota"
-
-# --- 2. LIGAÇÕES GOOGLE SHEETS ---
-def conectar_gsheets():
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    try:
-        if "service_account" in st.secrets:
-            creds_dict = st.secrets["service_account"]
-            if "gcp_json" in creds_dict:
-                try: creds_json = json.loads(creds_dict["gcp_json"], strict=False)
-                except: creds_json = json.loads(creds_dict["gcp_json"])
-            else: creds_json = creds_dict
-        else: return None
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
-        client = gspread.authorize(creds)
-        return client.open(NOME_FOLHA_GOOGLE)
-    except: return None
-
-# --- 3. FUNÇÕES DE DADOS (FATURAS) ---
-def carregar_dados():
-    wb = conectar_gsheets()
-    if wb:
-        try:
-            sheet = wb.get_worksheet(0)
-            data = sheet.get_all_values()
-            if not data or len(data) <= 1: 
-                return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
-            df = pd.DataFrame(data[1:], columns=data[0])
-            return df
-        except: return pd.DataFrame()
-    return pd.DataFrame()
-
-def guardar_registo(dados):
-    wb = conectar_gsheets()
-    if wb:
-        try: 
-            wb.get_worksheet(0).append_row(dados, value_input_option='USER_ENTERED')
-            return True
-        except: return False
-    return False
-
-def eliminar_registo(indice):
-    wb = conectar_gsheets()
-    if wb:
-        try: wb.get_worksheet(0).delete_rows(indice + 2); return True
-        except: return False
-    return False
-
-# --- 4. FUNÇÕES DE DADOS (VALIDADES) ---
-def carregar_validades():
-    wb = conectar_gsheets()
-    if wb:
-        try:
-            sheet = wb.worksheet("Validades")
-            data = sheet.get_all_records()
-            df_base = pd.DataFrame({"Matricula": LISTA_VIATURAS})
-            if not data: 
-                for c in ["Data_Seguro", "Data_Inspecao", "Data_IUC", "Observacoes"]: df_base[c] = ""
-                return df_base
-            return pd.merge(df_base, pd.DataFrame(data), on="Matricula", how="left").fillna("")
-        except: return pd.DataFrame()
-    return pd.DataFrame()
-
-def guardar_validade_nova(dados):
-    wb = conectar_gsheets()
-    if wb:
-        try:
-            sheet = wb.worksheet("Validades")
-            try: cell = sheet.find(dados[0])
-            except: cell = None
-            if cell:
-                linha = cell.row
-                sheet.update(f"B{linha}:E{linha}", [[dados[1], dados[2], dados[3], dados[4]]])
-            else: sheet.append_row(dados)
-            return True
-        except: return False
-    return False
-
-# --- 5. LOGO ---
-def mostrar_logo():
-    caminhos = [".streamlit/logo.png", "logo.png", ".streamlit/Logo.png", "Logo.png"]
-    encontrou = False
-    for c in caminhos:
-        try: st.image(c, use_container_width=True); encontrou = True; break
-        except: continue
-    if not encontrou: st.header("QERQUEIJO 🧀")
-
-# --- 6. ALERTAS ---
-def verificar_alertas(df_val):
-    if df_val.empty: return
-    hoje = datetime.now().date()
-    for _, row in df_val.iterrows():
-        mat = row['Matricula']
-        verificacoes = {"Seguro": row.get('Data_Seguro'), "Inspeção": row.get('Data_Inspecao'), "IUC": row.get('Data_IUC')}
-        for tipo, data_str in verificacoes.items():
-            if data_str and str(data_str).strip() not in ["", "None", "nan"]:
-                try:
-                    data_val = datetime.strptime(str(data_str), "%Y-%m-%d").date()
-                    dias_restantes = (data_val - hoje).days
-                    if dias_restantes < 0: st.error(f"🚨 **URGENTE ({mat}):** {tipo} expirou dia {data_val.strftime('%d/%m')}!")
-                    elif dias_restantes <= 7: st.error(f"⏰ **CRÍTICO ({mat}):** {tipo} vence em {dias_restantes} dias")
-                    elif dias_restantes <= 30: st.warning(f"⚠️ **Atenção ({mat}):** {tipo} vence em {dias_restantes} dias")
-                except: continue
-
-# --- 7. APP PRINCIPAL ---
-if 'logado' not in st.session_state: st.session_state['logado'] = False
-if 'preco_gasoleo_memoria' not in st.session_state: st.session_state['preco_gasoleo_memoria'] = 1.500
-
-if not st.session_state['logado']:
-    col1, col2, col3 = st.columns([2, 2, 2])
-    with col2:
-        st.write(""); st.write("")
-        mostrar_logo()
-        senha = st.text_input("Senha", type="password")
-        if st.button("Entrar", type="primary", use_container_width=True):
-            if senha == "queijo123": st.session_state['logado'] = True; st.rerun()
-            else: st.error("Senha errada!")
-else:
-    with st.sidebar:
-        mostrar_logo()
-        st.write("---")
-        if st.button("Sair"): st.session_state['logado'] = False; st.rerun()
-
-    df_alertas = carregar_validades()
-    if not df_alertas.empty: verificar_alertas(df_alertas)
-
-    st.title("🚛 Gestão de Frota")
-    menu = st.radio("", ["➕ Adicionar Despesa", "📊 Resumo Financeiro", "📅 Validades & Alertas"], horizontal=True)
-    st.divider()
-
-    # --- CONTEÚDO 1: ADICIONAR ---
-    if menu == "➕ Adicionar Despesa":
-        cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"])
-        c1, c2 = st.columns(2)
-        with c1:
-            if cat == "Lavagem": mat = st.multiselect("Viaturas (Podes escolher várias)", LISTA_VIATURAS)
-            else: mat = st.selectbox("Viatura", LISTA_VIATURAS)
-        with c2:
-            dt = st.date_input("Data Fatura", datetime.now())
-            nf = st.text_input("Nº Fatura")
-            
-        k1, k2, k3 = st.columns(3)
-        with k1: 
-            km = st.number_input("KMs", step=1)
-        
-        # LÓGICA DE CAMPOS DINÂMICOS
-        if cat == "Combustível":
-            with k2:
-                val_comb = st.number_input("Valor Gasóleo (€)", min_value=0.0, step=0.01)
-                preco_litro = st.number_input("Preço por Litro (€/L)", min_value=0.0, step=0.001, format="%.3f", value=st.session_state['preco_gasoleo_memoria'])
-                
-                val_litros = 0.0
-                if preco_litro > 0 and val_comb > 0:
-                    val_litros = val_comb / preco_litro
-                    st.success(f"⛽ Calculado: **{val_litros:.2f} Litros**")
-
-            with k3:
-                tem_adblue = st.checkbox("💧 Levou AdBlue?")
-                if tem_adblue:
-                    val_adblue = st.number_input("Valor AdBlue (€)", min_value=0.0, step=0.01)
-                else:
-                    val_adblue = 0.0
-            
-            val = val_comb + val_adblue
-            desc_input = st.text_input("Descrição (Opcional)")
-            
-            partes_desc = []
-            if preco_litro > 0:
-                partes_desc.append(f"Preço/L: {preco_litro:.3f}€")
-            if val_litros > 0:
-                partes_desc.append(f"Litros: {val_litros:.2f}")
-            if tem_adblue and val_adblue > 0:
-                partes_desc.append(f"AdBlue: {val_adblue:.2f}€")
-            if desc_input:
-                partes_desc.append(desc_input.strip())
-                
-            desc = " | ".join(partes_desc)
-            
-            if tem_adblue and val_adblue > 0:
-                st.info(f"💶 **Valor Total a Gravar:** {val:.2f} € (Gasóleo + AdBlue)")
-                
-        elif cat == "Frio":
-            with k2:
-                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
-            with k3:
-                tipo_frio = st.selectbox("Tipo de Serviço:", ["Revisão", "Reparação"])
-                desc_input = st.text_input("Descrição (Opcional)")
-                desc = f"{tipo_frio} | {desc_input}".strip(" |")
-
-        elif cat == "Oficina":
-            with k2:
-                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
-            with k3:
-                tipo_oficina = st.multiselect("Tipo de Serviço (Escolhe 1 ou mais):", ["Revisão", "Discos", "Pastilhas", "Acidente", "Eletricista", "Avaria"])
-                desc_input = st.text_input("Descrição (Opcional)")
-                
-                if tipo_oficina:
-                    servicos_str = ", ".join(tipo_oficina)
-                    desc = f"{servicos_str} | {desc_input}".strip(" |")
-                else:
-                    desc = desc_input.strip()
-
-        elif cat == "Seguro":
+elif cat == "Seguro":
             with k2:
                 val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
             with k3:
@@ -267,31 +20,48 @@ else:
         st.write("") 
         
         if st.button("💾 Gravar", type="primary", use_container_width=True):
-            val_para_gravar = f"{val:.2f}".replace('.', ',')
-
-            if cat == "Lavagem":
-                if not mat: st.warning("⚠️ Escolhe pelo menos uma viatura.")
-                elif val <= 0: st.warning("⚠️ O valor tem de ser maior que 0.")
-                else:
-                    sucesso = True
-                    for viatura in mat:
-                        if not guardar_registo([str(dt), viatura, cat, val_para_gravar, km, nf, desc]): sucesso = False
-                    if sucesso:
-                        st.success(f"✅ {len(mat)} lavagens registadas com sucesso!")
-                        st.rerun()
-                    else: st.error("Erro a gravar.")
+            # 1. O ESCUDO ANTI-DUPLICAÇÃO
+            df_atual = carregar_dados()
+            duplicada = False
+            if nf and not df_atual.empty and nf in df_atual['Num_Fatura'].values:
+                duplicada = True
+                
+            if duplicada:
+                st.error(f"🛑 ERRO: A fatura nº **{nf}** já foi registada! Não foi guardada para evitar duplicados.")
             else:
-                if val > 0 and nf:
-                    if cat == "Combustível": st.session_state['preco_gasoleo_memoria'] = preco_litro
-                    if guardar_registo([str(dt), mat, cat, val_para_gravar, km, nf, desc]):
-                        st.success("✅ Fatura registada!")
-                        st.rerun()
-                else: st.warning("⚠️ Preenche Valor e Nº Fatura")
+                val_para_gravar = f"{val:.2f}".replace('.', ',')
+
+                if cat == "Lavagem":
+                    if not mat: st.warning("⚠️ Escolhe pelo menos uma viatura.")
+                    elif val <= 0: st.warning("⚠️ O valor tem de ser maior que 0.")
+                    else:
+                        sucesso = True
+                        for viatura in mat:
+                            if not guardar_registo([str(dt), viatura, cat, val_para_gravar, km, nf, desc]): sucesso = False
+                        if sucesso:
+                            st.success(f"✅ {len(mat)} lavagens registadas com sucesso!")
+                            st.rerun()
+                        else: st.error("Erro a gravar.")
+                else:
+                    if val > 0 and nf:
+                        if cat == "Combustível": st.session_state['preco_gasoleo_memoria'] = preco_litro
+                        if guardar_registo([str(dt), mat, cat, val_para_gravar, km, nf, desc]):
+                            st.success("✅ Fatura registada!")
+                            st.rerun()
+                    else: st.warning("⚠️ Preenche Valor e Nº Fatura")
 
     # --- CONTEÚDO 2: RESUMO FINANCEIRO ---
     elif menu == "📊 Resumo Financeiro":
         df = carregar_dados()
         if not df.empty:
+            
+            # 2. O RADAR (Deteta faturas duplicadas que já estavam no sistema)
+            faturas_contagem = df[df['Num_Fatura'] != ""]['Num_Fatura'].value_counts()
+            duplicados_lista = faturas_contagem[faturas_contagem > 1].index.tolist()
+            
+            if duplicados_lista:
+                st.error("🚨 **ATENÇÃO: Foram detetadas faturas duplicadas no sistema!**")
+                st.write(f"Nºs de Fatura em duplicado: **{', '.join(duplicados_lista)}** (Usa a ferramenta Editar/Apagar abaixo para corrigir)")
             
             def limpar_valor_definitivo(row):
                 v = row.get('Valor', '0')
@@ -375,20 +145,52 @@ else:
                 col_g2.plotly_chart(fig_pie, use_container_width=True)
 
                 st.divider()
-                with st.expander("🗑️ Eliminar Fatura Específica"):
+                
+                # 3. A FERRAMENTA DE PRECISÃO (EDITAR/APAGAR)
+                with st.expander("🛠️ Editar ou Apagar Fatura"):
                     c_del1, c_del2 = st.columns(2)
                     l_mat_del = ["Todas"] + list(df["Matricula"].unique())
-                    f_mat_del = c_del1.selectbox("Viatura (Eliminar):", l_mat_del)
-                    f_doc_del = c_del2.text_input("Nº Fatura (Apagar):")
+                    f_mat_del = c_del1.selectbox("Viatura (Procurar):", l_mat_del)
+                    f_doc_del = c_del2.text_input("Nº Fatura (Procurar):")
+                    
                     df_del = df.copy(); df_del['Idx'] = df_del.index
                     if f_mat_del != "Todas": df_del = df_del[df_del["Matricula"] == f_mat_del]
                     if f_doc_del: df_del = df_del[df_del["Num_Fatura"].astype(str).str.contains(f_doc_del, case=False)]
+                    
                     if not df_del.empty:
-                        ops = [f"Linha {r.Idx} | {r.Data_Fatura.date()} | {r.Matricula} | {r.Valor_Visual}" for _, r in df_del.iterrows()]
-                        escolha = st.selectbox("Selecionar para Apagar:", ops[::-1])
-                        if st.button("❌ Confirmar Eliminação"):
-                            idx = int(escolha.split(" |")[0].replace("Linha ", ""))
-                            if eliminar_registo(idx): st.rerun()
+                        ops = [f"Linha {r.Idx} | {r.Data_Fatura.date()} | {r.Matricula} | Fatura: {r.Num_Fatura} | {r.Valor_Visual}" for _, r in df_del.iterrows()]
+                        escolha = st.selectbox("Selecionar Fatura:", ops[::-1])
+                        
+                        idx_escolhido = int(escolha.split(" |")[0].replace("Linha ", ""))
+                        dados_linha = df_del[df_del['Idx'] == idx_escolhido].iloc[0]
+                        
+                        st.write("---")
+                        st.markdown("##### ✏️ Editar Dados da Fatura")
+                        e_c1, e_c2, e_c3 = st.columns(3)
+                        n_data = e_c1.date_input("Nova Data", dados_linha['Data_Fatura'])
+                        n_mat = e_c2.selectbox("Nova Viatura", LISTA_VIATURAS, index=LISTA_VIATURAS.index(dados_linha['Matricula']) if dados_linha['Matricula'] in LISTA_VIATURAS else 0)
+                        n_cat = e_c3.selectbox("Nova Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"], index=["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"].index(dados_linha['Categoria']) if dados_linha['Categoria'] in ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"] else 0)
+                        
+                        e_k1, e_k2, e_k3 = st.columns(3)
+                        n_val = e_k1.number_input("Novo Valor (€)", value=float(dados_linha['Valor']), step=0.01)
+                        n_km = e_k2.number_input("Novos KMs", value=int(dados_linha['KM_Atuais']), step=1)
+                        n_nf = e_k3.text_input("Novo Nº Fatura", value=str(dados_linha['Num_Fatura']))
+                        
+                        n_desc = st.text_input("Nova Descrição", value=str(dados_linha['Descricao']))
+                        
+                        col_btn1, col_btn2 = st.columns(2)
+                        if col_btn1.button("💾 Guardar Alterações", type="primary", use_container_width=True):
+                            n_val_str = f"{n_val:.2f}".replace('.', ',')
+                            if editar_registo(idx_escolhido, [str(n_data), n_mat, n_cat, n_val_str, n_km, n_nf, n_desc]):
+                                st.success("✅ Fatura atualizada com sucesso!")
+                                st.rerun()
+                            else:
+                                st.error("Erro ao atualizar fatura.")
+                                
+                        if col_btn2.button("❌ Eliminar Fatura", use_container_width=True):
+                            if eliminar_registo(idx_escolhido): 
+                                st.success("✅ Fatura eliminada!")
+                                st.rerun()
 
                 st.subheader("📋 Detalhe das Faturas (Filtradas)")
                 st.dataframe(df_f, use_container_width=True, hide_index=True,
@@ -474,7 +276,7 @@ else:
                         hide_index=True
                     )
                 else:
-                    st.info("💡 Não há registos de abastecimento suficientes (com Litros e KMs inseridos) no período selecionado para calcular as médias reais.")
+                    st.info("💡 Não há registos de abastecimento suficientes no período selecionado para calcular médias reais.")
 
             else: st.warning("Sem dados para os filtros selecionados.")
 
