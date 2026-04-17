@@ -1,14 +1,267 @@
-elif cat == "Seguro":
+import streamlit as st
+import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
+from datetime import datetime, timedelta
+import plotly.express as px
+from PIL import Image
+
+# --- 1. CONFIGURAÇÃO GERAL E ÍCONE ---
+try:
+    icone = Image.open("logo.png")
+except:
+    try:
+        icone = Image.open(".streamlit/logo.png")
+    except:
+        icone = "🚛" 
+
+st.set_page_config(page_title="Qerqueijo Frota", page_icon=icone, layout="wide")
+
+LISTA_VIATURAS = [
+    "06-QO-19", "59-RT-87", "19-TF-05", "28-UO-50", "17-UM-19", "83-ZL-79", 
+    "83-ZL-83", "AD-66-VN", "AD-71-VN", "AL-36-FF", "AL-30-FF", "AT-79-QU", 
+    "AT-87-QU", "BE-64-TJ", "BE-16-TL", "BE-35-TJ", "BL-33-LG", "BL-68-LF", 
+    "BR-83-SQ", "BU-45-NF", "BX-53-AB", "BO-08-DB", "AU-56-NT", "74-LU-19"
+]
+
+# CSS
+st.markdown("""
+    <style>
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    footer {visibility: hidden;}
+    .stAppDeployButton {display: none;}
+    .stApp { background-color: white; }
+    [data-testid="stSidebar"] { background-color: #F0F2F6; }
+    h1, h2, h3 { color: #002060; }
+    .stButton>button { background-color: #002060; color: white; border: none; }
+    .stButton>button:hover { background-color: #001540; color: white; }
+    div.stImage > img { display: block; margin-left: auto; margin-right: auto; }
+    div[role="radiogroup"] > label > div:first-of-type { display: none; }
+    div[role="radiogroup"] { flex-direction: row; justify-content: center; gap: 20px; }
+    div[data-testid="metric-container"] { background-color: #F0F2F6; padding: 10px; border-radius: 5px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+NOME_FOLHA_GOOGLE = "dados_frota"
+
+# --- 2. LIGAÇÕES GOOGLE SHEETS ---
+def conectar_gsheets():
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    try:
+        if "service_account" in st.secrets:
+            creds_dict = st.secrets["service_account"]
+            if "gcp_json" in creds_dict:
+                try: creds_json = json.loads(creds_dict["gcp_json"], strict=False)
+                except: creds_json = json.loads(creds_dict["gcp_json"])
+            else: creds_json = creds_dict
+        else: return None
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
+        client = gspread.authorize(creds)
+        return client.open(NOME_FOLHA_GOOGLE)
+    except: return None
+
+# --- 3. FUNÇÕES DE DADOS (FATURAS) ---
+def carregar_dados():
+    wb = conectar_gsheets()
+    if wb:
+        try:
+            sheet = wb.get_worksheet(0)
+            data = sheet.get_all_values()
+            if not data or len(data) <= 1: 
+                return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
+            df = pd.DataFrame(data[1:], columns=data[0])
+            return df
+        except: return pd.DataFrame()
+    return pd.DataFrame()
+
+def guardar_registo(dados):
+    wb = conectar_gsheets()
+    if wb:
+        try: 
+            wb.get_worksheet(0).append_row(dados, value_input_option='USER_ENTERED')
+            return True
+        except: return False
+    return False
+
+def eliminar_registo(indice):
+    wb = conectar_gsheets()
+    if wb:
+        try: wb.get_worksheet(0).delete_rows(indice + 2); return True
+        except: return False
+    return False
+
+def editar_registo(indice, novos_dados):
+    wb = conectar_gsheets()
+    if wb:
+        try: 
+            linha = indice + 2
+            wb.get_worksheet(0).update(f"A{linha}:G{linha}", [novos_dados])
+            return True
+        except: return False
+    return False
+
+# --- 4. FUNÇÕES DE DADOS (VALIDADES) ---
+def carregar_validades():
+    wb = conectar_gsheets()
+    if wb:
+        try:
+            sheet = wb.worksheet("Validades")
+            data = sheet.get_all_records()
+            df_base = pd.DataFrame({"Matricula": LISTA_VIATURAS})
+            if not data: 
+                for c in ["Data_Seguro", "Data_Inspecao", "Data_IUC", "Observacoes"]: df_base[c] = ""
+                return df_base
+            return pd.merge(df_base, pd.DataFrame(data), on="Matricula", how="left").fillna("")
+        except: return pd.DataFrame()
+    return pd.DataFrame()
+
+def guardar_validade_nova(dados):
+    wb = conectar_gsheets()
+    if wb:
+        try:
+            sheet = wb.worksheet("Validades")
+            try: cell = sheet.find(dados[0])
+            except: cell = None
+            if cell:
+                linha = cell.row
+                sheet.update(f"B{linha}:E{linha}", [[dados[1], dados[2], dados[3], dados[4]]])
+            else: sheet.append_row(dados)
+            return True
+        except: return False
+    return False
+
+# --- 5. LOGO ---
+def mostrar_logo():
+    caminhos = [".streamlit/logo.png", "logo.png", ".streamlit/Logo.png", "Logo.png"]
+    encontrou = False
+    for c in caminhos:
+        try: st.image(c, use_container_width=True); encontrou = True; break
+        except: continue
+    if not encontrou: st.header("QERQUEIJO 🧀")
+
+# --- 6. ALERTAS ---
+def verificar_alertas(df_val):
+    if df_val.empty: return
+    hoje = datetime.now().date()
+    for _, row in df_val.iterrows():
+        mat = row['Matricula']
+        verificacoes = {"Seguro": row.get('Data_Seguro'), "Inspeção": row.get('Data_Inspecao'), "IUC": row.get('Data_IUC')}
+        for tipo, data_str in verificacoes.items():
+            if data_str and str(data_str).strip() not in ["", "None", "nan"]:
+                try:
+                    data_val = datetime.strptime(str(data_str), "%Y-%m-%d").date()
+                    dias_restantes = (data_val - hoje).days
+                    if dias_restantes < 0: st.error(f"🚨 **URGENTE ({mat}):** {tipo} expirou dia {data_val.strftime('%d/%m')}!")
+                    elif dias_restantes <= 7: st.error(f"⏰ **CRÍTICO ({mat}):** {tipo} vence em {dias_restantes} dias")
+                    elif dias_restantes <= 30: st.warning(f"⚠️ **Atenção ({mat}):** {tipo} vence em {dias_restantes} dias")
+                except: continue
+
+# --- 7. APP PRINCIPAL ---
+if 'logado' not in st.session_state: st.session_state['logado'] = False
+if 'preco_gasoleo_memoria' not in st.session_state: st.session_state['preco_gasoleo_memoria'] = 1.500
+
+if not st.session_state['logado']:
+    col1, col2, col3 = st.columns([2, 2, 2])
+    with col2:
+        st.write(""); st.write("")
+        mostrar_logo()
+        senha = st.text_input("Senha", type="password")
+        if st.button("Entrar", type="primary", use_container_width=True):
+            if senha == "queijo123": st.session_state['logado'] = True; st.rerun()
+            else: st.error("Senha errada!")
+else:
+    with st.sidebar:
+        mostrar_logo()
+        st.write("---")
+        if st.button("Sair"): st.session_state['logado'] = False; st.rerun()
+
+    df_alertas = carregar_validades()
+    if not df_alertas.empty: verificar_alertas(df_alertas)
+
+    st.title("🚛 Gestão de Frota")
+    menu = st.radio("", ["➕ Adicionar Despesa", "📊 Resumo Financeiro", "📅 Validades & Alertas"], horizontal=True)
+    st.divider()
+
+    # --- CONTEÚDO 1: ADICIONAR ---
+    if menu == "➕ Adicionar Despesa":
+        cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"])
+        c1, c2 = st.columns(2)
+        with c1:
+            if cat == "Lavagem": mat = st.multiselect("Viaturas (Podes escolher várias)", LISTA_VIATURAS)
+            else: mat = st.selectbox("Viatura", LISTA_VIATURAS)
+        with c2:
+            dt = st.date_input("Data Fatura", datetime.now())
+            nf = st.text_input("Nº Fatura")
+            
+        k1, k2, k3 = st.columns(3)
+        with k1: 
+            km = st.number_input("KMs", step=1)
+        
+        # LÓGICA DE CAMPOS DINÂMICOS
+        if cat == "Combustível":
+            with k2:
+                val_comb = st.number_input("Valor Gasóleo (€)", min_value=0.0, step=0.01)
+                preco_litro = st.number_input("Preço por Litro (€/L)", min_value=0.0, step=0.001, format="%.3f", value=st.session_state['preco_gasoleo_memoria'])
+                
+                val_litros = 0.0
+                if preco_litro > 0 and val_comb > 0:
+                    val_litros = val_comb / preco_litro
+                    st.success(f"⛽ Calculado: **{val_litros:.2f} Litros**")
+
+            with k3:
+                tem_adblue = st.checkbox("💧 Levou AdBlue?")
+                if tem_adblue:
+                    val_adblue = st.number_input("Valor AdBlue (€)", min_value=0.0, step=0.01)
+                else:
+                    val_adblue = 0.0
+            
+            val = val_comb + val_adblue
+            desc_input = st.text_input("Descrição (Opcional)")
+            
+            partes_desc = []
+            if preco_litro > 0:
+                partes_desc.append(f"Preço/L: {preco_litro:.3f}€")
+            if val_litros > 0:
+                partes_desc.append(f"Litros: {val_litros:.2f}")
+            if tem_adblue and val_adblue > 0:
+                partes_desc.append(f"AdBlue: {val_adblue:.2f}€")
+            if desc_input:
+                partes_desc.append(desc_input.strip())
+                
+            desc = " | ".join(partes_desc)
+            if tem_adblue and val_adblue > 0:
+                st.info(f"💶 **Valor Total a Gravar:** {val:.2f} € (Gasóleo + AdBlue)")
+                
+        elif cat == "Frio":
+            with k2:
+                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+            with k3:
+                tipo_frio = st.selectbox("Tipo de Serviço:", ["Revisão", "Reparação"])
+                desc_input = st.text_input("Descrição (Opcional)")
+                desc = f"{tipo_frio} | {desc_input}".strip(" |")
+
+        elif cat == "Oficina":
+            with k2:
+                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+            with k3:
+                tipo_oficina = st.multiselect("Tipo de Serviço (Escolhe 1 ou mais):", ["Revisão", "Discos", "Pastilhas", "Acidente", "Eletricista", "Avaria"])
+                desc_input = st.text_input("Descrição (Opcional)")
+                
+                if tipo_oficina:
+                    servicos_str = ", ".join(tipo_oficina)
+                    desc = f"{servicos_str} | {desc_input}".strip(" |")
+                else:
+                    desc = desc_input.strip()
+
+        elif cat == "Seguro":
             with k2:
                 val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
             with k3:
                 num_sinistros = st.number_input("Nº de Sinistros neste seguro", min_value=0, step=1, value=0)
                 desc_input = st.text_input("Descrição (Opcional)")
-                
-                if num_sinistros > 0:
-                    desc = f"Sinistros: {num_sinistros} | {desc_input}".strip(" |")
-                else:
-                    desc = desc_input.strip()
+                if num_sinistros > 0: desc = f"Sinistros: {num_sinistros} | {desc_input}".strip(" |")
+                else: desc = desc_input.strip()
                 
         else:
             with k2:
@@ -20,7 +273,6 @@ elif cat == "Seguro":
         st.write("") 
         
         if st.button("💾 Gravar", type="primary", use_container_width=True):
-            # 1. O ESCUDO ANTI-DUPLICAÇÃO
             df_atual = carregar_dados()
             duplicada = False
             if nf and not df_atual.empty and nf in df_atual['Num_Fatura'].values:
@@ -55,7 +307,6 @@ elif cat == "Seguro":
         df = carregar_dados()
         if not df.empty:
             
-            # 2. O RADAR (Deteta faturas duplicadas que já estavam no sistema)
             faturas_contagem = df[df['Num_Fatura'] != ""]['Num_Fatura'].value_counts()
             duplicados_lista = faturas_contagem[faturas_contagem > 1].index.tolist()
             
@@ -68,10 +319,8 @@ elif cat == "Seguro":
                 try:
                     if pd.isna(v) or v == "": return 0.0
                     v_str = str(v).replace('€', '').strip().replace(' ', '')
-                    if '.' in v_str and ',' in v_str:
-                        v_str = v_str.replace('.', '').replace(',', '.')
-                    elif ',' in v_str:
-                        v_str = v_str.replace(',', '.')
+                    if '.' in v_str and ',' in v_str: v_str = v_str.replace('.', '').replace(',', '.')
+                    elif ',' in v_str: v_str = v_str.replace(',', '.')
                     return float(v_str)
                 except: return 0.0
 
@@ -83,8 +332,7 @@ elif cat == "Seguro":
             
             def extrair_litros(desc):
                 try:
-                    if "Litros:" in str(desc):
-                        return float(str(desc).split("Litros:")[1].split("|")[0].strip().replace(',', '.'))
+                    if "Litros:" in str(desc): return float(str(desc).split("Litros:")[1].split("|")[0].strip().replace(',', '.'))
                 except: pass
                 return 0.0
             
@@ -118,7 +366,6 @@ elif cat == "Seguro":
 
             if not df_f.empty:
                 st.divider()
-                
                 st.subheader("📊 Resumo por Viatura e Mês")
                 pivot = pd.pivot_table(df_f, values='Valor', index='Matricula', columns='Nome_Mês', aggfunc='sum', fill_value=0)
                 meses_ordem = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -127,13 +374,10 @@ elif cat == "Seguro":
                 
                 pivot['Total Gasto'] = pivot.sum(axis=1)
                 pivot = pivot.sort_values('Total Gasto', ascending=False)
-                for col in pivot.columns:
-                    pivot[col] = pivot[col].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-                    
+                for col in pivot.columns: pivot[col] = pivot[col].apply(lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
                 st.dataframe(pivot, use_container_width=True)
 
                 st.write("---")
-                
                 col_g1, col_g2 = st.columns(2)
                 df_ev = df_f.groupby([df_f['Data_Fatura'].dt.to_period('M').astype(str), 'Categoria'])['Valor'].sum().reset_index()
                 df_ev.columns = ['Mês', 'Categoria', 'Valor'] 
@@ -146,7 +390,6 @@ elif cat == "Seguro":
 
                 st.divider()
                 
-                # 3. A FERRAMENTA DE PRECISÃO (EDITAR/APAGAR)
                 with st.expander("🛠️ Editar ou Apagar Fatura"):
                     c_del1, c_del2 = st.columns(2)
                     l_mat_del = ["Todas"] + list(df["Matricula"].unique())
@@ -184,8 +427,7 @@ elif cat == "Seguro":
                             if editar_registo(idx_escolhido, [str(n_data), n_mat, n_cat, n_val_str, n_km, n_nf, n_desc]):
                                 st.success("✅ Fatura atualizada com sucesso!")
                                 st.rerun()
-                            else:
-                                st.error("Erro ao atualizar fatura.")
+                            else: st.error("Erro ao atualizar fatura.")
                                 
                         if col_btn2.button("❌ Eliminar Fatura", use_container_width=True):
                             if eliminar_registo(idx_escolhido): 
@@ -209,72 +451,31 @@ elif cat == "Seguro":
                 st.divider()
                 st.subheader("📈 Custo Total por Viatura (Detalhado)")
                 df_grafico_final = df_f.groupby(['Matricula', 'Categoria'])['Valor'].sum().reset_index()
-                
-                fig_final = px.bar(
-                    df_grafico_final, 
-                    y='Matricula', 
-                    x='Valor', 
-                    color='Categoria', 
-                    orientation='h',
-                    title="Despesas por Viatura divididas por Categoria",
-                    text_auto='.2s'
-                )
-                
-                fig_final.update_layout(
-                    yaxis={'categoryorder':'total ascending'}, 
-                    xaxis_title="Total Gasto (€)", 
-                    yaxis_title="Viatura",
-                    height=600 
-                )
-                
+                fig_final = px.bar(df_grafico_final, y='Matricula', x='Valor', color='Categoria', orientation='h', title="Despesas por Viatura divididas por Categoria", text_auto='.2s')
+                fig_final.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="Total Gasto (€)", yaxis_title="Viatura", height=600)
                 st.plotly_chart(fig_final, use_container_width=True)
                 
                 st.divider()
                 st.subheader("⛽ Análise de Consumos Médios (L/100km)")
-                
                 df_comb = df_f[df_f['Categoria'] == 'Combustível'].copy()
                 dados_consumo = []
-                
                 for mat in df_comb['Matricula'].unique():
                     df_v = df_comb[(df_comb['Matricula'] == mat) & (df_comb['KM_Atuais'] > 0) & (df_comb['Litros'] > 0)].sort_values('KM_Atuais')
-                    
                     if len(df_v) > 1:
                         dist = df_v['KM_Atuais'].max() - df_v['KM_Atuais'].min()
                         litros_gastos = df_v['Litros'].iloc[1:].sum() 
-                        
                         if dist > 0 and litros_gastos > 0:
                             media = (litros_gastos / dist) * 100
                             if 0 < media < 100: 
-                                dados_consumo.append({
-                                    'Matricula': mat, 
-                                    'Média (L/100km)': round(media, 2),
-                                    'KMs Percorridos': dist,
-                                    'Litros Consumidos': round(litros_gastos, 2)
-                                })
+                                dados_consumo.append({'Matricula': mat, 'Média (L/100km)': round(media, 2), 'KMs Percorridos': dist, 'Litros Consumidos': round(litros_gastos, 2)})
                 
                 if dados_consumo:
                     df_cons = pd.DataFrame(dados_consumo).sort_values('Média (L/100km)', ascending=False)
-                    
                     c_cons1, c_cons2 = st.columns([2, 1])
-                    
-                    fig_cons = px.bar(
-                        df_cons, 
-                        x='Média (L/100km)', 
-                        y='Matricula', 
-                        orientation='h',
-                        title="Viaturas Mais Gulosas (Média de Litros por 100km)",
-                        text_auto=True,
-                        color='Média (L/100km)',
-                        color_continuous_scale='Reds'
-                    )
+                    fig_cons = px.bar(df_cons, x='Média (L/100km)', y='Matricula', orientation='h', title="Viaturas Mais Gulosas (Média de Litros por 100km)", text_auto=True, color='Média (L/100km)', color_continuous_scale='Reds')
                     fig_cons.update_layout(yaxis={'categoryorder':'total ascending'})
                     c_cons1.plotly_chart(fig_cons, use_container_width=True)
-                    
-                    c_cons2.dataframe(
-                        df_cons[['Matricula', 'Média (L/100km)', 'KMs Percorridos']], 
-                        use_container_width=True, 
-                        hide_index=True
-                    )
+                    c_cons2.dataframe(df_cons[['Matricula', 'Média (L/100km)', 'KMs Percorridos']], use_container_width=True, hide_index=True)
                 else:
                     st.info("💡 Não há registos de abastecimento suficientes no período selecionado para calcular médias reais.")
 
