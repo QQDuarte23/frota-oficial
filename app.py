@@ -66,7 +66,7 @@ def carregar_dados():
     wb = conectar_gsheets()
     if wb:
         try:
-            sheet = wb.get_worksheet(0) # CORREÇÃO AQUI
+            sheet = wb.get_worksheet(0)
             data = sheet.get_all_values()
             if not data or len(data) <= 1: 
                 return pd.DataFrame(columns=["Data_Fatura", "Matricula", "Categoria", "Valor", "KM_Atuais", "Num_Fatura", "Descricao"])
@@ -79,7 +79,7 @@ def guardar_registo(dados):
     wb = conectar_gsheets()
     if wb:
         try: 
-            wb.get_worksheet(0).append_row(dados, value_input_option='USER_ENTERED') # CORREÇÃO AQUI
+            wb.get_worksheet(0).append_row(dados, value_input_option='USER_ENTERED')
             return True
         except: return False
     return False
@@ -87,7 +87,7 @@ def guardar_registo(dados):
 def eliminar_registo(indice):
     wb = conectar_gsheets()
     if wb:
-        try: wb.get_worksheet(0).delete_rows(indice + 2); return True # CORREÇÃO AQUI
+        try: wb.get_worksheet(0).delete_rows(indice + 2); return True
         except: return False
     return False
 
@@ -149,6 +149,7 @@ def verificar_alertas(df_val):
 
 # --- 7. APP PRINCIPAL ---
 if 'logado' not in st.session_state: st.session_state['logado'] = False
+if 'preco_gasoleo_memoria' not in st.session_state: st.session_state['preco_gasoleo_memoria'] = 1.500
 
 if not st.session_state['logado']:
     col1, col2, col3 = st.columns([2, 2, 2])
@@ -191,7 +192,13 @@ else:
         if cat == "Combustível":
             with k2:
                 val_comb = st.number_input("Valor Gasóleo (€)", min_value=0.0, step=0.01)
-                val_litros = st.number_input("Litros Abastecidos", min_value=0.0, step=0.01)
+                preco_litro = st.number_input("Preço por Litro (€/L)", min_value=0.0, step=0.001, format="%.3f", value=st.session_state['preco_gasoleo_memoria'])
+                
+                val_litros = 0.0
+                if preco_litro > 0 and val_comb > 0:
+                    val_litros = val_comb / preco_litro
+                    st.success(f"⛽ Calculado: **{val_litros:.2f} Litros**")
+
             with k3:
                 tem_adblue = st.checkbox("💧 Levou AdBlue?")
                 if tem_adblue:
@@ -203,6 +210,8 @@ else:
             desc_input = st.text_input("Descrição (Opcional)")
             
             partes_desc = []
+            if preco_litro > 0:
+                partes_desc.append(f"Preço/L: {preco_litro:.3f}€")
             if val_litros > 0:
                 partes_desc.append(f"Litros: {val_litros:.2f}")
             if tem_adblue and val_adblue > 0:
@@ -236,7 +245,6 @@ else:
                 else:
                     desc = desc_input.strip()
 
-        # AQUI ESTÁ O NOVO BLOCO PARA O SEGURO E SINISTROS
         elif cat == "Seguro":
             with k2:
                 val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
@@ -274,6 +282,7 @@ else:
                     else: st.error("Erro a gravar.")
             else:
                 if val > 0 and nf:
+                    if cat == "Combustível": st.session_state['preco_gasoleo_memoria'] = preco_litro
                     if guardar_registo([str(dt), mat, cat, val_para_gravar, km, nf, desc]):
                         st.success("✅ Fatura registada!")
                         st.rerun()
