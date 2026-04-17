@@ -183,33 +183,48 @@ else:
     menu = st.radio("", ["➕ Adicionar Despesa", "📊 Resumo Financeiro", "📅 Validades & Alertas"], horizontal=True)
     st.divider()
 
-    # --- CONTEÚDO 1: ADICIONAR ---
+    # --- CONTEÚDO 1: ADICIONAR (LAYOUT ARRUMADO) ---
     if menu == "➕ Adicionar Despesa":
-        cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"])
-        c1, c2 = st.columns(2)
-        with c1:
-            if cat == "Lavagem": mat = st.multiselect("Viaturas (Podes escolher várias)", LISTA_VIATURAS)
-            else: mat = st.selectbox("Viatura", LISTA_VIATURAS)
-        with c2:
+        
+        # LINHA 1: Categoria, Data, Documento
+        col_cat, col_dt, col_nf = st.columns([2, 1, 1])
+        with col_cat: 
+            cat = st.selectbox("Categoria", ["Combustível", "Pneus", "Oficina", "Frio", "Lavagem", "Portagens", "Seguro", "Inspeção", "IUC"])
+        with col_dt: 
             dt = st.date_input("Data Fatura", datetime.now())
+        with col_nf: 
             nf = st.text_input("Nº Fatura")
             
-        k1, k2, k3 = st.columns(3)
-        with k1: 
-            km = st.number_input("KMs", step=1)
+        # LINHA 2: Viatura, KMs
+        col_mat, col_km = st.columns(2)
+        with col_mat:
+            if cat == "Lavagem": 
+                mat = st.multiselect("Viaturas (Podes escolher várias)", LISTA_VIATURAS)
+            else: 
+                mat = st.selectbox("Viatura", LISTA_VIATURAS)
+        with col_km: 
+            km = st.number_input("KMs (Opcional se não houver)", step=1)
         
-        # LÓGICA DE CAMPOS DINÂMICOS
+        st.markdown("---") # Divisória elegante
+        
+        # LINHA 3 & 4: LÓGICA ESPECÍFICA DE CADA CATEGORIA
         if cat == "Combustível":
-            with k2:
+            col_v1, col_v2, col_v3 = st.columns(3)
+            with col_v1:
                 val_comb = st.number_input("Valor Gasóleo (€)", min_value=0.0, step=0.01)
+            with col_v2:
                 preco_litro = st.number_input("Preço por Litro (€/L)", min_value=0.0, step=0.001, format="%.3f", value=st.session_state['preco_gasoleo_memoria'])
-                
-                val_litros = 0.0
-                if preco_litro > 0 and val_comb > 0:
-                    val_litros = val_comb / preco_litro
-                    st.success(f"⛽ Calculado: **{val_litros:.2f} Litros**")
+            
+            # Mostrar os litros logo debaixo
+            val_litros = 0.0
+            if preco_litro > 0 and val_comb > 0:
+                val_litros = val_comb / preco_litro
+                with col_v1: 
+                    st.info(f"⛽ {val_litros:.2f} Litros")
 
-            with k3:
+            with col_v3:
+                st.write("") # Espaço em branco para empurrar a checkbox para alinhar com as caixas
+                st.write("")
                 tem_adblue = st.checkbox("💧 Levou AdBlue?")
                 if tem_adblue:
                     val_adblue = st.number_input("Valor AdBlue (€)", min_value=0.0, step=0.01)
@@ -220,58 +235,52 @@ else:
             desc_input = st.text_input("Descrição (Opcional)")
             
             partes_desc = []
-            if preco_litro > 0:
-                partes_desc.append(f"Preço/L: {preco_litro:.3f}€")
-            if val_litros > 0:
-                partes_desc.append(f"Litros: {val_litros:.2f}")
-            if tem_adblue and val_adblue > 0:
-                partes_desc.append(f"AdBlue: {val_adblue:.2f}€")
-            if desc_input:
-                partes_desc.append(desc_input.strip())
+            if preco_litro > 0: partes_desc.append(f"Preço/L: {preco_litro:.3f}€")
+            if val_litros > 0: partes_desc.append(f"Litros: {val_litros:.2f}")
+            if tem_adblue and val_adblue > 0: partes_desc.append(f"AdBlue: {val_adblue:.2f}€")
+            if desc_input: partes_desc.append(desc_input.strip())
                 
             desc = " | ".join(partes_desc)
             if tem_adblue and val_adblue > 0:
-                st.info(f"💶 **Valor Total a Gravar:** {val:.2f} € (Gasóleo + AdBlue)")
+                st.success(f"💶 **Valor Total a Gravar:** {val:.2f} € (Gasóleo + AdBlue)")
                 
         elif cat == "Frio":
-            with k2:
-                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
-            with k3:
-                tipo_frio = st.selectbox("Tipo de Serviço:", ["Revisão", "Reparação"])
-                desc_input = st.text_input("Descrição (Opcional)")
-                desc = f"{tipo_frio} | {desc_input}".strip(" |")
+            c_f1, c_f2 = st.columns([1, 2])
+            with c_f1: val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+            with c_f2: tipo_frio = st.selectbox("Tipo de Serviço:", ["Revisão", "Reparação"])
+            desc_input = st.text_input("Descrição (Opcional)")
+            desc = f"{tipo_frio} | {desc_input}".strip(" |")
 
         elif cat == "Oficina":
-            with k2:
-                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
-            with k3:
-                tipo_oficina = st.multiselect("Tipo de Serviço (Escolhe 1 ou mais):", ["Revisão", "Discos", "Pastilhas", "Acidente", "Eletricista", "Avaria"])
-                desc_input = st.text_input("Descrição (Opcional)")
-                
-                if tipo_oficina:
-                    servicos_str = ", ".join(tipo_oficina)
-                    desc = f"{servicos_str} | {desc_input}".strip(" |")
-                else:
-                    desc = desc_input.strip()
+            c_o1, c_o2 = st.columns([1, 2])
+            with c_o1: val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+            with c_o2: tipo_oficina = st.multiselect("Tipo de Serviço (Escolhe 1 ou mais):", ["Revisão", "Discos", "Pastilhas", "Acidente", "Eletricista", "Avaria"])
+            desc_input = st.text_input("Descrição (Opcional)")
+            
+            if tipo_oficina:
+                servicos_str = ", ".join(tipo_oficina)
+                desc = f"{servicos_str} | {desc_input}".strip(" |")
+            else: desc = desc_input.strip()
 
         elif cat == "Seguro":
-            with k2:
-                val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
-            with k3:
-                num_sinistros = st.number_input("Nº de Sinistros neste seguro", min_value=0, step=1, value=0)
-                desc_input = st.text_input("Descrição (Opcional)")
-                if num_sinistros > 0: desc = f"Sinistros: {num_sinistros} | {desc_input}".strip(" |")
-                else: desc = desc_input.strip()
+            c_s1, c_s2 = st.columns([1, 1])
+            with c_s1: val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
+            with c_s2: num_sinistros = st.number_input("Nº de Sinistros neste seguro", min_value=0, step=1, value=0)
+            desc_input = st.text_input("Descrição (Opcional)")
+            if num_sinistros > 0: desc = f"Sinistros: {num_sinistros} | {desc_input}".strip(" |")
+            else: desc = desc_input.strip()
                 
         else:
-            with k2:
+            c_g1, c_g2 = st.columns([1, 2])
+            with c_g1:
                 if cat == "Lavagem": val = st.number_input("Valor (€)", value=18.50, step=0.01)
                 else: val = st.number_input("Valor (€)", min_value=0.0, step=0.01)
-            with k3: 
-                desc = st.text_input("Descrição")
+            with c_g2: 
+                desc = st.text_input("Descrição (Opcional)")
             
         st.write("") 
         
+        # BOTÃO GRAVAR
         if st.button("💾 Gravar", type="primary", use_container_width=True):
             df_atual = carregar_dados()
             duplicada = False
